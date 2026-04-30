@@ -1,0 +1,25 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Virtual environments
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Project artifacts (large files — re-generate from scripts)
+data/
+models/
+results/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
