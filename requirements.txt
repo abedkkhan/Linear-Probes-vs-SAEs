@@ -4,3 +4,5 @@ datasets
 scikit-learn
 numpy
 python-dotenv
+matplotlib
+seaborn

@@ -1,0 +1,5 @@
+We are testing the Linear Representation Hypothesis for sentiment in Gemma 2 2B's layer 12.
+The linear probe finds the single direction in the 2304-dim residual stream that best separates positive from negative reviews — 
+its weight vector is the candidate sentiment direction. If this direction achieves high accuracy on held-out test data, it confirms 
+that sentiment is represented linearly at this layer. The SAE will independently produce its own candidate sentiment direction without
+seeing any labels, and the cosine similarity between the two will tell us how much the methods agree.
