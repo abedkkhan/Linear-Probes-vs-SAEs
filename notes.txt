@@ -1,5 +1,856 @@
 We are testing the Linear Representation Hypothesis for sentiment in Gemma 2 2B's layer 12.
-The linear probe finds the single direction in the 2304-dim residual stream that best separates positive from negative reviews — 
-its weight vector is the candidate sentiment direction. If this direction achieves high accuracy on held-out test data, it confirms 
+The linear probe finds the single direction in the 2304-dim residual stream that best separates positive from negative reviews —
+its weight vector is the candidate sentiment direction. If this direction achieves high accuracy on held-out test data, it confirms
 that sentiment is represented linearly at this layer. The SAE will independently produce its own candidate sentiment direction without
 seeing any labels, and the cosine similarity between the two will tell us how much the methods agree.
+
+================================================================================
+1. THE DATA — answered in plain language (before preprocessing)
+================================================================================
+
+Q: Which dataset did we pick, and from where?
+
+We picked the Stanford Sentiment Treebank version 2, almost always just called
+SST-2. It is one of the most widely used datasets in natural language
+processing — it has been a standard benchmark for sentiment-classification
+work for over a decade. We downloaded it from the Hugging Face hub under the
+identifier `stanfordnlp/sst2`, which is the official Stanford NLP group's
+distribution of it. Hugging Face is essentially a public library where
+researchers host datasets and models, so anyone running our code can pull the
+same exact version of the data automatically.
+
+Q: What is the data actually about?
+
+It is a collection of short snippets taken from movie reviews originally
+published on the Rotten Tomatoes website. Each snippet was labelled by human
+annotators as either positive (label 1) or negative (label 0), and that's the
+entire dataset — just text and a binary label. The full SST-2 contains roughly
+67,000 training examples, 872 validation examples, and 1,821 test examples,
+although for our small initial experiment we only use a slice of those.
+Importantly, we do not generate this data ourselves; it is a pre-existing,
+well-studied benchmark, which makes our results comparable to other published
+work and removes any risk of accidental bias from us creating examples by hand.
+
+Q: What is the nature of the text?
+
+This is the part most people don't realise about SST-2 until they actually
+look at it. The dataset is built from the Stanford Sentiment Treebank, where
+each full sentence from a movie review was parsed into a tree of phrases, and
+every single phrase along that tree was labelled with a sentiment by human
+annotators. So the data contains a strange mixture — some entries are full
+sentences like "that loves its characters and communicates something rather
+beautiful about human nature", and others are tiny fragments like "pathetic
+junk", "bring tissues", "genial-rogue shtick", or even just "irritates and".
+Lengths range from two or three words up to a few dozen. The vocabulary is
+movie-criticism English, sometimes formal and literary, sometimes very
+colloquial. Roughly 56% of the examples are labelled positive and 44%
+negative, so the dataset is almost balanced but slightly tilted toward
+positive.
+
+Q: Why this dataset for our project?
+
+Sentiment is one of the simplest and most well-studied "concepts" in NLP. If
+we want to test whether a language model represents abstract concepts as
+linear directions inside its activations, sentiment is the ideal first test
+case: the labels are clean, the dataset is small enough to iterate quickly,
+and any researcher can reproduce the experiment without paying for compute or
+licensing data. It is, essentially, the hello-world of probing experiments —
+a controlled environment where we can debug our methodology before applying
+it to harder concepts later.
+
+================================================================================
+2. STAGE 1 PRE-PROCESSING — turning raw SST-2 into our working set
+================================================================================
+
+The first thing we did was prepare the text itself, in
+scripts/01_prepare_dataset.py. The raw SST-2 download contains 67,349 training
+examples, 872 validation examples, and 1,821 test examples — far too many for
+a fast initial experiment. So we did three things.
+
+First, we dropped the official "test" split entirely. SST-2's test split has
+its labels deliberately hidden (every label is set to -1) because Stanford
+keeps it secret as a leaderboard. We can't evaluate on it, so we ignored it.
+
+Second, we carved out our own subsets. We kept only 2000 examples for
+training, 500 for validation, and 500 for our own test. The 2000 train + 500
+test were both sampled from the original training split, while our 500
+validation came from the original validation split. We picked these examples
+randomly but with a fixed random seed (42), so the same exact 3000 examples
+are selected every time anyone runs the script — that's how we make the
+experiment reproducible.
+
+Third, we saved them to disk in a clean format. Each subset went into a JSON
+file (data/train_samples.json and so on) containing just the sentence text
+and its label, plus a manifest file recording which seed and which source
+indices we used. We did NOT tokenise yet, did NOT clean punctuation, did NOT
+lowercase, did NOT remove stopwords — the text is kept exactly as Stanford
+published it. The reason we don't do classical NLP preprocessing is that
+Gemma's tokenizer is the only thing that needs to "understand" the text, and
+it expects raw, unmodified strings.
+
+================================================================================
+3. THE MODEL — which model, why, and what kind of model
+================================================================================
+
+Q: Which model did we pick?
+
+We picked Gemma 2 2B, Google DeepMind's small open-weights language model
+from the Gemma 2 family. We downloaded it from Hugging Face under the
+identifier `google/gemma-2-2b`. The "2B" in the name means it has roughly
+2 billion parameters — small by today's standards (compared to GPT-4 or
+Llama 70B), but still a serious, capable model.
+
+Q: Why this specific model?
+
+There is one decisive reason and a few supporting reasons.
+
+The decisive reason is that Google has released pretrained Sparse
+Autoencoders for Gemma 2, under a project called Gemma Scope. SAEs are
+difficult and expensive to train from scratch — it can take days on big GPUs.
+Because Gemma Scope already provides ready-made SAEs trained on every layer
+of Gemma 2 2B, we can simply download them and skip training entirely. That
+single fact dictated the model choice: we needed a model that has open SAEs
+available, and Gemma 2 2B is one of the very few that does. Picking any other
+model would have meant either training our own SAEs (slow and risky for an
+MVP) or abandoning the SAE comparison altogether.
+
+The supporting reasons are practical. Gemma 2 2B is small enough to fit
+comfortably on consumer hardware — about 5 GB in half precision — so it runs
+on the M4 MacBook with no need for cloud GPUs. It is fully open-weights,
+meaning anyone can reproduce the experiment for free. And it's well
+documented and well studied, so if anything goes wrong we can find help.
+
+Q: What kind of model is it?
+
+Gemma 2 2B is a decoder-only Transformer language model, the same broad
+family as GPT, Llama, and Mistral. In simple terms, that means it was trained
+to do one thing: read a piece of text and predict the next token. By doing
+this on enormous amounts of internet text during pretraining, it has
+internally learned grammar, factual knowledge, reasoning patterns, and —
+relevantly for us — high-level semantic features like sentiment, even though
+no one ever explicitly told it about sentiment.
+
+The architecture has 26 stacked decoder layers. Each layer reads from a
+shared "scratchpad" called the residual stream, performs some computation
+(attention plus a feed-forward block), and writes its result back to the
+scratchpad. The scratchpad at every layer carries 2304 numbers per token —
+that 2304 is the number we keep mentioning, because it's the dimension of
+every activation vector we extract.
+
+Q: Why "frozen"?
+
+We never train or fine-tune Gemma. We only run it forward to look at what it
+has already learned during its pretraining. The whole point of the experiment
+is to study representations that emerged naturally from next-token
+prediction, not representations we deliberately tuned for sentiment. So
+Gemma stays exactly as Google released it — we just listen to its layer 12
+and read out the activations.
+
+--------------------------------------------------------------------------------
+3a. Inside the architecture — decoder layers, residual stream, and 2304-dim
+--------------------------------------------------------------------------------
+
+Gemma 2 2B is a decoder-only Transformer with 26 stacked decoder layers.
+Every layer operates on the same shared object — the residual stream — which
+is a tensor of shape (sequence_length, 2304). Each token in your input has
+its own 2304-dimensional vector inside this stream, and that vector gets
+progressively refined as it passes through the 26 layers.
+
+What the residual stream actually is
+
+The residual stream is the central communication channel of the model.
+Think of it as a shared workspace that every layer reads from and writes to.
+When you tokenise a sentence, the embedding layer initialises one 2304-dim
+vector per token — these vectors are essentially "what does this token mean
+in isolation". Then layer 1 reads this stream, computes some transformation,
+and ADDS its output back into the stream. Layer 2 does the same. And so on
+for all 26 layers.
+
+The crucial property is additivity: layers don't replace what's there, they
+accumulate. Mathematically, if x_i is the residual stream entering layer i:
+
+    x_{i+1} = x_i + Layer_i(x_i)
+
+This is why it's called residual — every layer's output is added on top of
+the existing stream. A consequence is that information written into the
+stream by an early layer is still accessible at every subsequent layer
+(unless later layers actively cancel it out).
+
+What each decoder layer computes
+
+A Gemma 2 decoder layer has two sub-modules, applied in sequence with
+residual connections around each:
+
+1. Multi-head self-attention. This is the mechanism that lets every token
+   "see" every preceding token in the sequence. Each head computes weighted
+   averages of other tokens' representations and writes the result back
+   into the residual stream. This is how the model builds up contextual
+   meaning — the representation of "off" in "off his game" becomes different
+   from "off" in "off the shelf", because attention pulled in information
+   from the surrounding tokens.
+
+2. Feed-forward block (MLP). A two-layer fully-connected network applied
+   independently to each token's residual-stream vector. This is where the
+   bulk of the model's parameters live and where most of the actual
+   computation happens — extracting non-linear features, recombining
+   concepts, performing what we'd loosely call "reasoning" on each token's
+   representation.
+
+In Gemma 2 these sub-modules also have RMSNorm normalisation applied before
+each, which is a Gemma-family detail — important if you're doing low-level
+interpretability but not central to the conceptual picture.
+
+Why 2304 specifically
+
+2304 is Gemma 2 2B's hidden size (d_model). It is the dimensionality of the
+residual stream and is fixed throughout the entire model — every layer
+reads, transforms, and writes 2304-dimensional vectors per token. This is a
+hyperparameter chosen by Google when designing the model. It is why every
+activation vector we extract is exactly 2304 long, and why the linear probe
+has exactly 2304 weights.
+
+Why this matters for our experiment
+
+Two architectural facts justify our methodology:
+
+1. The residual stream is the model's main bus. If a high-level concept like
+   sentiment is being computed and used by the model, it almost has to be
+   written into the residual stream at some point — that's the only channel
+   through which information flows between layers. So hooking the residual
+   stream is the natural place to look for emergent concepts.
+
+2. Layer 12 is the midpoint of the 26-layer stack. Empirical work on decoder
+   LLMs (Alain & Bengio 2017; Park et al. 2024; the Gemma Scope paper)
+   consistently finds that semantic, task-level concepts emerge in the
+   middle layers — early layers handle tokenisation and syntax, late layers
+   compress everything down for next-token prediction, and middle layers
+   carry the richest abstract representations. Layer 12 sits squarely in
+   that middle zone.
+
+That's why we hook the residual stream output of layer 12: it's the model's
+shared workspace at the point in the computation where abstract concepts
+like sentiment are most likely to be cleanly represented.
+
+--------------------------------------------------------------------------------
+3b. What if we hooked a different layer — e.g. layer 20?
+--------------------------------------------------------------------------------
+
+Layer 20 is in the late zone of Gemma 2 2B — five layers from the end.
+Hooking there changes what kind of representation you're reading.
+
+What layer 20 has that layer 12 doesn't
+
+By the time the residual stream reaches layer 20, eight more decoder layers
+have written into it on top of whatever was there at layer 12. Some of that
+extra computation almost certainly refines sentiment further — there's
+evidence in the Gemma Scope paper that some sentiment-related features
+remain present and even sharpen in later layers. So a probe at layer 20
+might still work very well — possibly in the high 80s or low 90s, even
+matching layer 12.
+
+What it loses, and why
+
+The reason late layers are usually worse for probing — even though they
+have "more computation" behind them — is a subtle but important point about
+what the model is actually using the residual stream for in late layers.
+
+In a decoder-only Transformer, the residual stream's job changes as you go
+deeper. In early layers it accumulates linguistic and conceptual structure.
+In middle layers it carries the richest, most general, most abstract
+semantic representations — which is why probes work best there. But in the
+last several layers, the residual stream begins to be re-purposed. The
+model is now preparing to make a single concrete prediction: the next
+token. So those late layers start projecting the rich middle-layer
+representation back down toward something that looks like the model's
+vocabulary — directions in residual space increasingly correspond to "this
+token is likely next" rather than "this is a sentiment-bearing concept".
+
+Concretely, this means three things tend to happen by layer 20:
+
+1. Sentiment becomes less cleanly linear. It hasn't disappeared, but it
+   gets entangled with token-prediction information, so a single linear
+   direction can no longer separate the classes as crisply.
+
+2. The representation becomes more token-specific. Late layers care a lot
+   about which exact word is about to come next. So sentences ending in
+   different words may have systematically different residual streams even
+   if their sentiment is the same — adding noise from the probe's
+   perspective.
+
+3. The probe's accuracy may stay high but the probe's direction becomes
+   less interpretable. A probe at layer 20 might still classify well, but
+   its weight vector is now a hybrid of "sentiment" and "next-token
+   vocabulary structure", which makes it less useful as a clean answer to
+   "what does sentiment look like in Gemma".
+
+What the published evidence actually shows
+
+For Gemma 2 2B specifically, the Gemma Scope paper reports residual-stream
+probing curves that look like an inverted-U — accuracy rising sharply from
+layer 0, peaking somewhere in the middle, and then drifting gently downward
+in the late layers. They never crash to baseline; they just stop improving
+and slowly fade. So a layer-20 probe would likely give us competitive but
+slightly lower accuracy than layer 12, with a less interpretable direction.
+
+And critically: the SAE comparison
+
+There is an additional reason layer choice matters for our specific
+project. Gemma Scope publishes pretrained SAEs at every layer, but each SAE
+is trained on the activations of one specific layer. Whichever layer we
+pick for the linear probe, we have to use the SAE trained on the same
+layer for the comparison to be valid. So choosing a different layer doesn't
+just change the probe — it also swaps in a different pretrained SAE, and
+the quality and interpretability of that SAE's discovered features may be
+different. The Gemma Scope team has reported that mid-layer SAEs tend to
+find the most clearly-interpretable, high-level features (sentiment, time,
+sentiment polarity, named entities, etc.), while late-layer SAEs find more
+token-prediction-flavoured features.
+
+Bottom line
+
+A probe at layer 20 would probably still work — perhaps in the high 80s —
+but with slightly lower accuracy than layer 12, a less interpretable probe
+direction (because it gets mixed with next-token-prediction information),
+and a less interpretable SAE to compare against.
+
+Plan: we will sweep one layer after another from 0 through 25 and train a
+probe at each, to test this hypothesis empirically and identify which layer
+carries the cleanest sentiment representation in Gemma 2 2B.
+
+================================================================================
+4. WHAT IS A HOOK — how we actually listen to layer 12
+================================================================================
+
+A hook is a callback function — a small piece of code that gets
+automatically executed at a specific point during the model's forward pass,
+without changing what the model is doing.
+
+Mechanically, here's what happens. PyTorch represents Gemma as a tree of
+Module objects — the top-level model contains 26 decoder-layer modules, each
+of which contains attention and MLP sub-modules, and so on. Whenever you
+call model(inputs), PyTorch walks through this tree and runs each module's
+forward() method in order, passing the output of one module as the input to
+the next.
+
+PyTorch lets you register a hook on any module. A hook is a function you
+give PyTorch in advance that says: "every time this specific module finishes
+running its forward pass, call my function with the inputs the module
+received and the output it produced." PyTorch keeps a list of registered
+hooks for every module, and after each module's forward() returns, it calls
+every hook in that list before moving on to the next module.
+
+In our case, we register a hook on model.model.layers[12] — the 13th
+decoder layer (zero-indexed). After that layer finishes computing, PyTorch
+hands our hook function the layer's output. Our hook just grabs that
+output, detaches it from the computation graph (so we don't accidentally
+compute gradients we don't need), and stores it in a Python dictionary.
+Then PyTorch carries on running layers 13, 14, ..., 25 as if nothing
+happened. The model still produces its normal next-token prediction at the
+end. We just also have a copy of layer 12's output sitting in our
+dictionary, ready to use.
+
+Why this is the right tool for the job
+
+Three properties matter for our experiment:
+
+1. It is non-invasive. The hook does not modify the residual stream,
+   doesn't change the model's behaviour, doesn't touch the weights. The
+   model runs exactly as it would without our hook attached. We are reading,
+   not editing.
+
+2. It runs at exactly the right moment. We don't want layer 11's output,
+   we don't want layer 13's, we want layer 12's output. By registering the
+   hook on the specific module model.model.layers[12], PyTorch guarantees we
+   capture the residual stream at exactly that point in the computation.
+
+3. It captures the tensor we want, not something downstream. PyTorch passes
+   our hook the direct output of Gemma2DecoderLayer.forward(). For Gemma
+   decoder layers this is a tuple, and the first element of that tuple is
+   the residual stream — i.e. the output x_{12} + Layer_12(x_{12}) from the
+   additivity formula in section 3a. So we are reading the residual stream
+   at the boundary between layer 12 and layer 13, which is precisely what
+   we wanted.
+
+What our hook function looks like in plain English
+
+    def hook(module, inputs, output):
+        captured["hidden"] = output[0].detach()
+
+That's it. Three lines: ignore `module` and `inputs`; take the first
+element of the output tuple (the residual stream); call .detach() to strip
+out gradient tracking; store it in a dictionary called `captured` that
+lives in the outer scope.
+
+Then we register it once with
+model.model.layers[12].register_forward_hook(hook), and from then on every
+forward pass through Gemma silently fills captured["hidden"] with the
+layer-12 residual stream. After we're done, we call handle.remove() to
+detach the hook and the model goes back to behaving normally.
+
+Why hooks instead of editing the model code
+
+We could in principle have copied Gemma's source code, edited the forward
+function to return layer 12's output, and run that modified model. But
+that's brittle, error-prone, and ties our code to a specific version of
+Hugging Face Transformers. Hooks are the standard, clean,
+framework-supported way to extract internal activations from any PyTorch
+model — and crucially, they let us inspect the original, unmodified model,
+which is essential for an interpretability study.
+
+================================================================================
+5. RUNNING THE EXTRACTION — sub-questions
+================================================================================
+
+--------------------------------------------------------------------------------
+Q1. How did we initiate the experiment?
+--------------------------------------------------------------------------------
+
+The extraction happens in scripts/02_extract_activations.py. The setup,
+before any sentences are processed, has four parts.
+
+Authentication. We load the Hugging Face token from .env and call login().
+This is necessary because Gemma 2 is a gated model — Google requires every
+download to be authenticated against a user account that has accepted the
+license. Without this step, the model download would fail with a 401 error.
+
+Device selection. We check whether MPS (Apple's GPU backend on M-series
+chips) is available, and if so we set device = torch.device("mps"). This
+means the model and every tensor we feed it will live on the GPU's unified
+memory, and matrix multiplications will run on the GPU rather than the CPU.
+On the M4 this is roughly an order of magnitude faster than CPU for
+transformer inference.
+
+Loading the model and tokenizer. We call
+AutoTokenizer.from_pretrained("google/gemma-2-2b") to get Gemma's exact
+tokenizer (the same SentencePiece vocabulary the model was trained with),
+and AutoModelForCausalLM.from_pretrained("google/gemma-2-2b",
+dtype=torch.float16).to(device) to load the model in half precision and
+move it to the GPU. We then call model.eval() to put the model into
+evaluation mode — this disables dropout and other training-only behaviour,
+which matters because we want every forward pass to be deterministic. We do
+this once at the start of the script and reuse the same model for all
+three splits, rather than reloading the 10 GB of weights three times.
+
+Registering the hook. We define our small hook function and attach it to
+model.model.layers[12] with register_forward_hook(...). From this moment
+on, every time the model runs a forward pass, layer 12's output is silently
+copied into a Python dictionary called `captured`, which we read after each
+pass. We register the hook once before the loop, not once per sentence —
+there's no need to attach and detach it 3000 times.
+
+After all four steps, we are ready to start feeding sentences. Note one
+important detail: the loop runs inside a torch.no_grad() context. This
+tells PyTorch not to build a computation graph for backpropagation, since
+we will never need gradients here. It saves both memory and time — roughly
+cuts memory usage in half on this kind of forward-only workload.
+
+--------------------------------------------------------------------------------
+Q2. What did the hook actually extract?
+--------------------------------------------------------------------------------
+
+Once the loop starts, every iteration does the same thing for one sentence.
+Here is what happens at the moment the hook fires.
+
+We tokenise the sentence with
+tokenizer(row["sentence"], return_tensors="pt").to(device). This produces a
+small dictionary containing two tensors — input_ids of shape (1, T) where
+T is the number of tokens (including the prepended <bos>), and
+attention_mask of the same shape, both sitting on the MPS GPU. We then
+call model(**inputs). PyTorch begins walking through Gemma's 26 decoder
+layers in order, and when layer 12 finishes computing, our hook function
+is called.
+
+The hook receives three arguments — the module itself, the inputs that
+went into it, and the output it produced — and we only care about the
+third. For a Gemma2DecoderLayer, that output is a Python tuple, by Hugging
+Face convention. The first element of the tuple is the residual stream
+after layer 12 has added its contribution. Other elements (when present)
+are things like attention weights or a key-value cache for autoregressive
+generation, but we don't need those.
+
+So we take output[0]. This is a tensor of shape (1, T, 2304). Reading the
+dimensions: 1 because we're processing one sentence at a time (the batch
+dimension); T because layer 12 produces one residual-stream vector for
+every token in the sentence (so a 6-token sentence gives 6 vectors, an
+11-token sentence gives 11); and 2304 because that's Gemma 2 2B's hidden
+size — every residual-stream vector is 2304 numbers long, fixed by the
+model's architecture.
+
+The dtype of this tensor is torch.float16, because the entire model is
+running in fp16. The device is mps, because the tensor lives on the GPU.
+
+We immediately call .detach() on this tensor before storing it. This is
+important because PyTorch by default tracks every tensor's history of
+operations to allow backpropagation, and even under torch.no_grad() it can
+still hold references that prevent memory from being freed. .detach()
+returns a copy of the tensor that is decoupled from the autograd graph
+entirely, so once we're done with it, the GPU memory can be reclaimed.
+
+After the hook stores this tensor in captured["hidden"], layer 12 returns
+control to PyTorch and Gemma carries on running layers 13 through 25. The
+model still produces a final output (the next-token logits), but we ignore
+it — our entire purpose has already been served the moment layer 12
+finished. We have a copy of the residual stream we wanted, sitting in our
+dictionary, ready for the next step.
+
+To answer the question precisely: the hook extracts a (1, T, 2304)
+half-precision tensor on GPU, representing the residual stream output of
+Gemma 2 2B's layer 12, with one 2304-dimensional vector per token in the
+input sentence.
+
+--------------------------------------------------------------------------------
+Q3. My confusions about labels, shapes, and mean-pooling — clarified
+--------------------------------------------------------------------------------
+
+Q: How does the label of a sentence get matched to its activation?
+A: By position. At iteration i: pooled[i] = activation, labels[i] = label.
+   Same i for both. Two parallel arrays, written together.
+
+Q: Is this label-matching like a sub-process running during the forward pass?
+A: No. Just two ordinary lines that run right after the forward pass, in
+   the same loop iteration. Sequential.
+
+Q: pooled[i] is the activation vector we extracted, right?
+A: Yes — the 2304-dim mean-pooled vector for sentence i.
+
+Q: Before running the forward pass, do we already know the label?
+A: Yes. Labels come from the SST-2 JSON file. We just carry them along.
+
+Q: So we already have the labels, and during the forward pass we take the
+   mean of T column-wise?
+A: Yes.
+
+Q: Can you give me a tiny example? I'm confused about where the average
+   value goes.
+A: Suppose hidden = 4 and T = 3. The (T, 2304) matrix becomes:
+
+       token 0:  [ 2,  4,  6,  8]
+       token 1:  [ 4,  6,  8, 10]
+       token 2:  [ 6,  8, 10, 12]
+
+   Average each column:
+       (2+4+6)/3=4   (4+6+8)/3=6   (6+8+10)/3=8   (8+10+12)/3=10
+
+   Result: [4, 6, 8, 10]. The 3 rows are gone. Replaced by one row of
+   column averages.
+
+Q: But we had (1, T, 2304). What does that look like?
+A: A 3-D box.
+       axis 0 = batch (size 1)
+       axis 1 = tokens (size T)
+       axis 2 = hidden dims (size 2304)
+   The leading 1 is just a wrapper. Inside it is the real (T, 2304) matrix.
+
+Q: So the 1 is not actually a row or column?
+A: Correct. It just means "one sentence at a time". PyTorch always wants
+   batched input, even if the batch has one item.
+
+Q: So the actual matrix is (T, 2304), and after mean-pooling T the tensor
+   becomes (1, 2304), but we write it as (2304,)?
+A: Yes. After .mean(dim=1) it's (1, 2304). After .squeeze(0) the size-1
+   wrapper is dropped and it becomes a plain 1-D vector of length 2304.
+
+Q: Where does T go after the mean?
+A: It disappears. T vectors were stacked on top of each other; averaging
+   collapses them into one vector. T no longer exists as a dimension.
+
+Q: Is mean-pooling the same as normalising?
+A: No. Mean-pooling = averaging T vectors into one. Normalising = scaling
+   values to a fixed range. Normalising happens later, in StandardScaler,
+   right before training the probe.
+
+--------------------------------------------------------------------------------
+Q4. How are we sure the input is going into the model correctly?
+--------------------------------------------------------------------------------
+
+Q: How do we know the right tokenizer is being used?
+A: We load it from the same model ID as the model itself
+   (google/gemma-2-2b). So the sub-word vocabulary, the special tokens,
+   and the encoding rules are exactly what Gemma was trained with. If we
+   mixed in any other tokenizer, the token IDs would be meaningless to
+   the model.
+
+Q: How do we know the input tensors end up in the right place?
+A: We call .to(device) on the tokenizer output, so input_ids and
+   attention_mask land on MPS — the same place the model lives. If they
+   were on CPU and the model on GPU, PyTorch would crash with a clear
+   device-mismatch error. No crash means devices line up.
+
+Q: How do we actually verify Gemma is seeing the sentence the way it
+   expects?
+A: We did a quick sanity check called the "pilot run". We took just one
+   sentence — "as a director, eastwood is off his game" — and asked the
+   tokenizer to break it into the small pieces (tokens) it was about to
+   feed into the model. Then we printed those pieces back in
+   human-readable form so we could see exactly what Gemma is going to see.
+
+   The tokenizer split the sentence into eleven pieces:
+
+   ['<bos>', 'as', ' a', ' director', ' ,', ' east', 'wood', ' is',
+    ' off', ' his', ' game']
+
+   Three things we wanted to confirm by looking at this list:
+
+   1. The very first piece is <bos> — short for "beginning of sentence".
+      Gemma always expects this special marker at the start of any input.
+      If it were missing, the model would still run but its activations
+      would be slightly off, because the model wasn't trained that way.
+      Seeing <bos> here confirms the tokenizer added it correctly.
+
+   2. The word "eastwood" was split into two pieces, east + wood. This is
+      normal. Tokenizers don't have a slot for every possible word in the
+      language — instead they learn a vocabulary of common chunks, and
+      rarer words get assembled out of smaller chunks. The fact that
+      "eastwood" is split exactly the way Gemma's vocabulary expects is
+      good — it means the tokenizer matches the model.
+
+   3. Most pieces start with a space, like ' a' instead of just 'a'. This
+      is also normal for Gemma. Its tokenizer treats the space before a
+      word as part of that word's token. So 'a' and ' a' are different
+      tokens in Gemma's vocabulary. Seeing the leading spaces preserved
+      confirms nothing got accidentally stripped or cleaned up before it
+      reached the model.
+
+   So the takeaway is: the sentence we wrote in plain English is being
+   fed into Gemma exactly the way Gemma expects to receive English text,
+   with the right special markers, the right sub-word splits, and the
+   right spacing. No silent corruption.
+
+Q: If I have an activation vector of shape (2304,), can I print the
+   original sentence from it?
+A: No — pooling is one-way, the original tokens are gone. But you can
+   always look up the sentence by index, since we kept everything
+   aligned. rows[i]["sentence"], labels[i] and acts[i] all describe the
+   same sentence because they were written in the same order in the same
+   loop. The JSON file is the human-readable side of the pipeline,
+   looked up by the same index i.
+
+--------------------------------------------------------------------------------
+Q6. How logistic regression actually works — broken into small bits
+--------------------------------------------------------------------------------
+
+Bit 1 — What logistic regression IS, before any training
+
+It's a tiny model with two ingredients:
+  - A weight vector w — same length as the input. For us, length 2304.
+  - A bias b — just one number.
+
+Total parameters: 2305.
+
+Given any input vector x, the model produces one number called the logit:
+       logit = w · x + b
+
+That w · x is just the dot product: multiply each weight by the matching
+input number, sum them all up. The result is a single scalar.
+
+This scalar is the model's "raw answer":
+  - Big positive logit → "I think this is class 1"
+  - Big negative logit → "I think this is class 0"
+  - Around zero → "I'm not sure"
+
+That's the whole machinery.
+
+Bit 2 — Turning the logit into a probability
+
+The logit can be anything from −∞ to +∞. We need to turn it into something
+between 0 and 1. We use the sigmoid function:
+
+       probability = 1 / (1 + e^(-logit))
+
+Examples:
+  logit = 0  → probability = 0.5  (totally unsure)
+  logit = +5 → probability ≈ 0.99 (very confident it's class 1)
+  logit = -5 → probability ≈ 0.01 (very confident it's class 0)
+
+The model's prediction: if probability > 0.5, predict positive; otherwise
+predict negative. Equivalently: predict positive whenever the logit is
+positive.
+
+Bit 3 — How training finds w and b
+
+At the start, w and b are just random numbers. The model knows nothing.
+Training is the process of slowly nudging w and b until predictions match
+the true labels as well as possible.
+
+Step 1 — Measure how wrong we are
+   For each training sentence we compute the predicted probability p and
+   compare it to the true label y. We sum up a single number across all
+   2000 examples called the loss.
+   Loss is small when the model is confident AND right. Loss is large
+   when the model is confident AND wrong. Minimising the loss = making
+   the model right and confident.
+   (Formula: binary cross-entropy. Don't need to memorise it.)
+
+Step 2 — Figure out which way to nudge each weight
+   For each of the 2305 parameters, we ask: if I increase this parameter
+   slightly, does the loss go up or down?
+   The answer is called the gradient. Calculus gives the gradients in
+   closed form. sklearn computes them automatically.
+
+Step 3 — Take a step
+       w_new = w_old − (small step) × (gradient for w)
+       b_new = b_old − (small step) × (gradient for b)
+   The "small step" is the learning rate. Too big = overshoot. Too small
+   = slow.
+
+Step 4 — Repeat
+   Compute new predictions, new loss, new gradients, take another step.
+   When gradients become tiny, no direction reduces the loss further —
+   the model has converged.
+
+In our run, sklearn converged in 60 iterations. After that, w is the
+2304-dim sentiment direction and b is the bias — both saved to disk.
+
+--------------------------------------------------------------------------------
+Q7. How we actually used logistic regression in our experiment — small bits
+--------------------------------------------------------------------------------
+
+Bit 1 — Loading the training data
+
+We loaded the activations and labels saved earlier:
+
+    X_train = np.load("data/train_activations.npy")   # shape (2000, 2304)
+    y_train = np.load("data/train_labels.npy")        # shape (2000,)
+
+X_train is a matrix: 2000 rows (one per sentence), 2304 columns (the
+activation vector for each sentence). y_train is 2000 numbers, each one
+0 (negative) or 1 (positive).
+
+The labels are NOT inside the matrix. They live in a separate 1-D array.
+But they are aligned by row order: X_train[i] is the activation for the
+sentence whose label is y_train[i]. When we later call clf.fit(X, y),
+sklearn knows row i of X belongs to label i of y.
+
+We did the same for X_val/y_val and X_test/y_test, but those splits are
+held aside — the probe never sees them during training.
+
+Bit 2 — Standardising the features
+
+Before training we rescaled the activations:
+
+    scaler = StandardScaler()
+    X_train_s = scaler.fit_transform(X_train)
+    X_val_s   = scaler.transform(X_val)
+    X_test_s  = scaler.transform(X_test)
+
+For each of the 2304 columns it computes the column's mean and std (across
+the 2000 training rows), subtracts the mean (column centred at 0), and
+divides by the std (spread ≈ 1).
+
+Why: each of the 2304 dimensions is a different learned channel inside
+Gemma. Across the 2000 training sentences, some columns naturally produce
+big values (e.g. ±40) and others tiny ones (e.g. ±0.01). Without scaling,
+the optimiser would obsess over the big-valued dims and L2 regularisation
+wouldn't penalise weights fairly. Standardising puts every column on the
+same footing.
+
+Tiny example. Pretend each sentence gives just 3 numbers:
+
+    sentence  dim 0   dim 1    dim 2
+       s1       30    0.02      -1
+       s2      -25   -0.01       2
+       s3       40    0.03      -3
+       s4      -35   -0.02       1
+
+Looking down each column: dim 0 is naturally big, dim 1 is naturally tiny,
+dim 2 is medium. "Big" and "small" doesn't mean within one sentence — it
+means column-wise across many sentences.
+
+Important: fit_transform only on train; transform (no fit) on val/test.
+That way val/test scaling uses train statistics — no data leakage.
+
+Bit 3 — Creating and fitting the probe
+
+    clf = LogisticRegression(
+        C=1.0,
+        max_iter=1000,
+        random_state=42,
+        penalty="l2",
+        solver="lbfgs",
+    )
+    clf.fit(X_train_s, y_train)
+
+LogisticRegression(...) creates an empty model — w and b don't exist yet.
+C=1.0 is the strength of L2 regularisation. max_iter=1000 limits the
+optimiser to 1000 steps. random_state=42 fixes randomness. solver="lbfgs"
+is the gradient-based optimisation algorithm.
+
+clf.fit(X_train_s, y_train) runs the full optimisation from Q6 Bit 3:
+start with random w and b; compute loss across all 2000 sentences; nudge
+w and b to reduce the loss; repeat until convergence.
+
+Our run converged in 60 iterations (well below the 1000 limit).
+
+After fit() finishes, clf holds:
+  - clf.coef_[0]      → trained weight vector w of shape (2304,)
+  - clf.intercept_[0] → trained bias b
+
+That w is our sentiment direction.
+
+Bit 4 — Evaluating on val and test
+
+    pred  = clf.predict(X_val_s)
+    proba = clf.predict_proba(X_val_s)[:, 1]
+
+clf.predict returns 0 or 1 for each of the 500 val sentences (internally:
+compute w·x + b, sigmoid it, threshold at 0.5). clf.predict_proba returns
+the probability of being positive.
+
+We computed accuracy, F1, AUC, and the confusion matrix on val and test.
+
+Results:
+    split   accuracy   f1       auc
+    train   1.0000     1.0000   1.0000
+    val     0.9140     0.9152   0.9712
+    test    0.9200     0.9216   0.9728
+
+Train is 100% — the probe memorised training data. Val and test ~92% —
+that's the real number, since the probe never saw those sentences.
+
+Bit 5 — Saving the artefacts
+
+    pickle.dump(clf,    open("models/linear_probe.pkl", "wb"))
+    pickle.dump(scaler, open("models/scaler.pkl",       "wb"))
+    np.save("results/probe_direction.npy", clf.coef_[0].astype(np.float32))
+    json.dump(metrics, open("results/probe_metrics.json", "w"), indent=2)
+
+What each file contains:
+
+  - linear_probe.pkl   → the trained sklearn classifier object (the
+                         learned w of shape (2304,), the bias b, and
+                         sklearn's internal config). Reusable as-is to
+                         predict on any new activation.
+  - scaler.pkl         → the fitted StandardScaler holding the per-column
+                         means and stds from the training set, so we can
+                         rescale any new activation the same way.
+  - probe_direction.npy → just the raw weight vector w saved as a NumPy
+                          array of shape (2304,) — the sentiment direction
+                          on its own (this is the artefact we'll later
+                          cosine-similarity against the SAE).
+  - probe_metrics.json → a plain JSON file with accuracy, F1, AUC, and
+                         the confusion matrix for train/val/test.
+
+Why we need scaler.pkl alongside the probe: the probe was trained on
+standardised activations. To predict on a new sentence we must (1) run
+forward pass to get raw activation x, (2) apply the same scaling
+x_scaled = (x - scaler.mean_) / scaler.scale_, (3) call clf.predict.
+Without the scaler the probe is unusable on new data.
+
+--------------------------------------------------------------------------------
+Q5. Quick recap — the three runs
+--------------------------------------------------------------------------------
+
+Q: We had 3000 sentences total with positive and negative labels. We only
+   gave those sentences to the model — 2000 separate, 500 separate, and
+   500 separate — and saved their activations in three separate files,
+   right?
+A: Yes. Three separate runs through Gemma, three separate sets of
+   activation + label files in data/:
+       train_*.npy  — 2000 sentences
+       val_*.npy    —  500 sentences
+       test_*.npy   —  500 sentences
+   The model sees them as independent batches; the only reason we keep
+   them apart is so we can later use train for fitting the probe, val
+   for tuning, and test as the sealed final exam. Same model, same hook,
+   same procedure — just three separate input lists and three separate
+   output files.
