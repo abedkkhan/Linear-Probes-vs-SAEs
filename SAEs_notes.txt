@@ -1,0 +1,783 @@
+In order to start working on the SAEs, the first thing we have to do is to install the best library in the market, which is called
+``` sae-lens ```
+Its just like installing a transformerrs library, or hugging face trl libraruy. It handles most of the tasks such as decode encode etc. 
+
+And then the second main step was to download the actual pre tarined SAEs, , so the saes itself is a traiuned model or neural network, which containsdecoder weights, encoder weights, and biases.
+For Gemma model which we are using, Google has already uploaded these weights on hugging face, which they  called Gemma Scope. Actually, we don't download all the files
+manually, we just tell SAEs what we want by giving it three conditions
+. Which release --> such as gemma-scope-2b-pt-rescal
+. Which layer
+. Which varient, specifically width of the layer, such as 16k, which is a specific sparsity level. 
+
+
+for example in code
+```
+sae, cfg, _ = SAE.from_pretrained(
+    release="gemma-scope-2b-pt-res-canonucal",
+    sae_id"layer_12/width+16k/canonical,average_l0_150
+)
+```
+
+The first time we run this, sae-lens reaches out to hugging face, downloads, weights file, caches it locally, and constructs on saes python holding 
+those objects. Every later run finds the cache and loads instantly. 
+
+The library (sae-lense) is generic, it knows how to run any saes that follow the standard formate, 
+
+
+Now, the question is, that why Gemma Scope: Because Google trained these SAEs on the exact same Gemma 2 2B we're using, at every layer, 
+and released them publicly. Other people's SAEs wouldn't fit — 
+an SAE is locked to one specific model and one specific layer.
+
+Gemma  2 2B has total 26 layers, but there was one specific yaml file, which is basically, a giant lookup table, that tells 
+library, here are all pre trained saes we know about, and here are the hugging face path to download each one. 
+
+
+These paths are looking like this
+```
+- id: blocks.5.hook_resid_pre
+    path: blocks.5.hook_resid_pre
+    neuronpedia: gpt2-small/5-res-jb
+    variance_explained: 0.9
+    l0: 41.0
+  - id: blocks.6.hook_resid_pre
+    path: blocks.6.hook_resid_pre
+    neuronpedia: gpt2-small/6-res-jb
+    variance_explained: 0.9
+    l0: 51.0
+  - id: blocks.7.hook_resid_pre
+    path: blocks.7.hook_resid_pre
+    neuronpedia: gpt2-small/7-res-jb
+    variance_explained: 0.9
+    l0: 54.0
+
+```
+
+So for every one of the 26 layers, Gemma Scope publishes multiple SAEs at different widths (16K, 65K, 1M features) 
+and at different sparsity targets (different "L0" values — meaning how many features fire on average per input). 
+Each row in the YAML maps a friendly sae_id to the actual HF file path.
+
+What we pick for our experiment:
+
+Layer = 12 (the layer we extracted activations from)
+Width = 16K (smallest — fastest, plenty of features, still ~7× over-complete vs 2304)
+Sparsity = the "canonical" variant for that layer/width (Gemma Scope's recommended default)
+
+When we call SAE.from_pretrained(release="…", sae_id="layer_12/width_16k/canonical"), 
+sae-lens looks that exact row up in this YAML, finds the matching Hugging Face path, and 
+downloads only that one SAE — not all 26 × however-many variants.
+
+So the YAML is just the "phone book." We dial one number out of it.
+
+
+Another technical not technical a confusing question
+What is Width of  a layer, a width of a layer is basically, the size of saes features dictionary ---- how many candidtae concepts it can carry
+We will choose 16k size, why
+1. Still very over-complete. Gemma's activations are 2304-dim. 16,384 features is roughly 7× more features than dimensions — 
+plenty of room to give each meaningful 
+concept its own dedicated feature.
+2. Sentiment is a coarse concept. It's not a rare, narrow feature like "the word grandmother in a French context". 
+It's one of the most basic semantic axes in language. 
+A 16K dictionary will almost certainly contain a sentiment feature.
+
+
+Here, the last tricky question
+What is sparsity, and why we are choosing sparsity = canonical
+For each layer Gemma scope trained multiple saes at different sparsity targets. Lo means how many features are allowed to fire per input. 
+L0 low = very sparse but lossy  reconstructions 
+L0 high = denser, accurate but less interperatbale
+Google has one cnonical choice as well, which is actually the recomended by google as well, its a best general purpose default
+
+
+Now, btw one another sub last technical question,
+what exactly the sparse mean
+
+**Sparsity / L0 — quick version**
+
+L0 = the **average number of features that fire** (are non-zero) per input activation.
+
+For `layer_0/width_16k/average_l0_105`:
+- 16,384 features exist in total
+- For any given activation, only ~**105** of them fire — the other ~16,279 are exactly zero
+- So each input is described by a handful of features out of thousands
+
+The trade-off:
+
+| L0 | What happens |
+|----|--------------|
+| Very low (e.g. 20) | Very sparse → each feature is highly specific, very interpretable. But the SAE can't reconstruct activations well 
+— too few "ingredients" to rebuild a 2304-dim vector. |
+| Very high (e.g. 500) | Many features fire → reconstructs the original activation accurately. But features become diffuse — 
+many fire on the same input, harder to interpret cleanly. |
+| Middle (e.g. ~100) | Sweet spot — clean enough to interpret, faithful enough to be useful. |
+
+The 105 you're seeing for layer 0 is Gemma Scope's chosen middle-ground for that layer.
+
+**"Vetted default" / canonical**
+
+For every (layer, width), Gemma Scope trained **multiple SAEs** at different L0 targets — say L0 = 30, 70, 105, 200, 400 — 
+and released all of them on Hugging Face.
+
+But people don't want to choose. So Google picked **one** of those variants per (layer, width) and labelled it `canonical`. 
+Their researchers looked at reconstruction quality, feature interpretability, and downstream task performance, and said: "if 
+you only download one SAE for this layer/width, use this one."
+
+So `id: layer_0/width_16k/canonical` is just a friendly alias. `path: layer_0/width_16k/average_l0_105` is the actual file. 
+The canonical pointer says "the L0=105 version is the one we recommend."
+
+That's why we use `canonical` — we skip choosing our own sparsity level and trust the team's vetted recommendation for the MVP.
+
+
+
+
+### FLAG WE GOT #############
+The SAE was trained to look at one token at a time.
+
+When Google trained this SAE, they showed it millions of activation vectors — but each one came from a single token sitting inside a sentence. The SAE has learned what a typical "single-token" 
+activation looks like, and how to break it down into features.
+
+We gave it something different.
+
+For our experiment, we took every sentence, ran it through Gemma, and averaged the activations of all its tokens into one vector. That averaged vector is not a single-token activation — 
+it's the mean of many. The SAE has never seen this kind of input before. It's like training a tool on photographs of 
+individual faces, then showing it a photograph of "ten faces blurred together" — it tries to interpret it, but the answer is unreliable.
+
+That's why the numbers look wrong.
+
+The SAE is firing far more features than it should (586 instead of ~82).
+It reacts very differently depending on how many tokens were averaged together. Short sentences (2–5 tokens) survive the averaging more — many features fire. Long sentences (15–30 tokens) get smeared out — 
+few features fire. That's exactly what we see: our val split (long sentences) gives ~47, while train/test (short fragments) give ~500+.
+The fix in one line:
+
+Run each token through the SAE separately, then combine the results at the feature level — not at the activation level.
+
+
+
+
+### SECOND FLAG WE GOT — even after fixing the pooling problem #############
+
+So we listened to the first fix. We rewrote the pipeline:
+
+1. Re-extracted Gemma's layer-12 activations, but this time WITHOUT averaging — we kept every token's vector separately. A sentence of 11 tokens now becomes an (11, 2304) matrix, not a single (2304,) vector.
+2. We verified the extraction was correct — shapes match the tokenizer, labels are aligned, no NaN/Inf, mean-pooling the new per-token data gives back (within fp16 precision) the old pooled vectors we had been using for the linear probe. So the actual activations are definitely correct.
+3. We fed those per-token vectors into the SAE one sentence at a time, expecting clean ~85 features per token (the canonical sparsity Google recommends).
+
+We re-ran everything. And we STILL got broken numbers:
+
+train: mean L0 = 507   max L0 = 5017
+val:   mean L0 = 297   max L0 = 5017
+test:  mean L0 = 486   max L0 = 5017
+
+This was confusing at first. The sparsity is still way above the expected ~85. So we sat with it for a moment and noticed something obvious that we'd missed:
+
+THE MAX L0 IS THE SAME (5017) ACROSS ALL THREE SPLITS.
+
+Train, val, and test are completely different sets of sentences. There is no reason they should share the exact same maximum, down to the integer. That can only mean one thing: the same type of token, present in every sentence, is the worst offender every single time.
+
+That kind of token has a name. It's the BOS token.
+
+
+
+### What is a BOS token
+
+BOS stands for "beginning of sentence." When you tokenize text with HuggingFace's tokenizer for Gemma, it automatically inserts a special invisible token at the very front of every sentence. So when we feed in a sentence like "the movie was great", the tokenizer doesn't actually give Gemma just those four tokens — it gives Gemma:
+
+  [<bos>, "the", " movie", " was", " great"]
+
+The <bos> token is a marker that tells the model "a new sentence is starting here." It's added by default to every input, every single time, in every split. That's why every split has it.
+
+So our token-counts of "11 tokens", "17 tokens", etc. — one of those tokens, always the first one, is the BOS token. Not a real word.
+
+
+
+### What is an "attention sink"
+
+Now here's the strange part of how big language models work, which Google researchers and others discovered fairly recently.
+
+When a transformer like Gemma processes a sentence, every token "looks at" the other tokens through a mechanism called attention. The model has to decide, for each token, how much weight to give every other token. The catch is that attention weights have to add up to 1 — they're a fixed budget.
+
+But what happens when a token has nothing meaningful to look at? For example, when the model is processing a token in the middle of a normal sentence and doesn't really need information from any specific other token? It still has to "spend" its attention somewhere — the math forces it to.
+
+It turns out that during training, models learn to "dump" this unused attention onto specific tokens that don't carry useful meaning — most commonly the BOS token, because it's always there, always at the start, and doesn't contain any real word. The BOS token becomes the model's "trash can" for unused attention.
+
+This is called an attention sink. The BOS token acts like a sink (as in a kitchen sink — the place where extra water drains).
+
+
+
+### Why this matters for the residual stream
+
+Because so many tokens dump their unused attention onto the BOS token, the BOS token's activations end up containing a huge accumulated signal. Remember those crazy stats we saw earlier:
+
+  min = -311,  max = +1678
+
+A normal word in a normal sentence has activation values somewhere in the range [-10, +10] or so. Values like 1678 are not for normal words. Those extreme values belong almost entirely to the BOS token (and a few other "sink" tokens). Most other tokens have nice, well-behaved activations.
+
+So the residual stream we're extracting contains:
+ - One BOS token per sentence with absurdly large values
+ - Many normal tokens with reasonable values
+
+
+
+### Why this breaks the SAE
+
+The SAE was trained on per-token Gemma activations — but Google specifically excluded weird sink tokens like the BOS when training it, because they don't represent real meaning. The SAE has only ever seen "normal" activation magnitudes.
+
+When we hand the SAE a BOS-token activation with values up to 1678, every internal threshold in the SAE gets blown past. The JumpReLU (the activation function inside this SAE) only lets a feature fire if the pre-activation crosses a learned threshold. With normal inputs, only ~85 features cross. With the giant BOS activation, around 5000 features cross.
+
+That's the 5017.
+
+
+
+### But wait — how does the SAE even "know" the BOS token came in?
+
+This is the most natural follow-up question, and it's a good one. The BOS token has the same shape as every other token — it's still a 2304-dimensional vector. So how can the SAE "tell" that one of them is a BOS and react differently? In particular, why would picking a sparsity of 105 not just force the SAE to fire 105 features no matter what we feed it?
+
+The answer is that the SAE doesn't know anything. It can't see token types. It has no concept of "this came from a BOS token" vs "this came from the word 'movie'". It only sees a vector of 2304 numbers, and it mechanically does the same operation on every input.
+
+The trick is that the BOS token and a normal token don't differ in shape — they differ in MAGNITUDE.
+
+Think of it this way. Imagine the SAE has 16,384 little detectors inside it. Each detector is essentially a fixed direction in 2304-dimensional space, plus a threshold. When an input vector comes in, the detector computes how strongly the input "points along" its own direction (this is just a dot product of two vectors). If the result is bigger than the detector's threshold, the detector fires. If not, it stays at zero.
+
+So the question "how many features fire?" really means "how many of those 16,384 dot products end up above their threshold?"
+
+Now here's the key point: dot products scale with the size of the input vector. If you take a normal-magnitude vector and double every number in it, every dot product also doubles. Triple it, every dot product triples. The directions in 2304-dim space haven't changed — but the numbers all just got bigger.
+
+A normal Gemma token has values roughly in the range [-10, +10]. A BOS token has values up to ±1678. That's a 100× larger magnitude. So when the BOS vector goes through those 16,384 detectors, every single dot product comes out roughly 100× bigger than it would for a normal token. And many, many more of them now cross their threshold.
+
+The SAE isn't recognizing the BOS. It's just doing the same arithmetic, but on a much louder input. The arithmetic mechanically lights up far more detectors.
+
+This is also why your sparsity target of 105 is not a hard rule. L0 = 105 means: "averaged across the kind of inputs we trained on, about 105 features fire." It is not a built-in cap. There is no mechanism inside the SAE that says "if more than 105 are about to fire, suppress the extras." The 105 is just what naturally happens when the input distribution matches what the SAE saw during training. Hand the SAE an input that is 100× larger than anything it saw during training, and the natural number of firings becomes much higher.
+
+A useful analogy: imagine a microphone array tuned to detect human voices in a quiet room. On normal speech, maybe 5 microphones pick up a clear signal. Now someone fires a cannon next to it. The microphones don't know it's a cannon — they just measure sound pressure. All 50 microphones suddenly register above their threshold, because the sound is enormously louder than anything they were calibrated for. The system isn't broken. The input is just way outside the regime it was designed for.
+
+The BOS token is the cannon. The 105 is the "average number of mics that fire on normal speech." It only holds when the input behaves like normal speech.
+
+
+
+### Follow-up: what is "token magnitude" anyway, and how does the SAE notice it?
+
+We keep saying "the BOS has a bigger magnitude" — but what does that actually mean, given that the BOS still produces the same 2304 numbers as every other token?
+
+Magnitude is just "how big the numbers in the vector are, taken together." A token's activation is a list of 2304 numbers. Two different tokens can have the same length of list, but very different sizes of numbers inside it.
+
+For example, two pretend vectors of length 5:
+
+  normal token: [ -3,  2,  5, -1,  4]
+  BOS token:    [-300, 200, 500, -100, 400]
+
+Same number of slots (5). Same general "shape" (positives in the same places, negatives in the same places). But the BOS one is the normal one multiplied by 100. Every number is 100× louder. That's what "bigger magnitude" means.
+
+Mathematically there's a single number that captures this: the vector's length (sometimes called its norm). You compute it by squaring every number, adding them up, and taking the square root. For the normal token above, the length is about 7.4. For the BOS-like one, the length is about 740. Same direction, 100× longer.
+
+In our real data, a typical Gemma layer-12 token has a length somewhere around 200–400. The BOS token's length is in the thousands. That's the gap. The numbers inside it aren't a different KIND of number — they're just enormously louder.
+
+
+
+Now: how does the SAE notice this loudness without anyone telling it?
+
+Short answer: it doesn't have a magnitude-detector. Magnitude is not measured by any single feature. Instead, magnitude silently scales every computation the SAE does, all at once.
+
+Here's why. Each of the 16,384 features inside the SAE has its own fixed direction in 2304-dim space (the weights it was trained with). When an input vector x comes in, the feature computes a dot product between the input and its own direction. The dot product has a known mathematical form:
+
+  dot(direction, x) = (length of direction) × (length of x) × cos(angle between them)
+
+The first part — "length of direction" — is baked in by training and doesn't change. The angle part — "how aligned the input is with my direction" — depends on the shape of the input, not its size.
+
+The only piece that depends on raw magnitude is "length of x". And it multiplies everything else.
+
+So if the input vector is 100× longer than usual:
+ - The angle between the input and each feature's direction is roughly the same as it would be for a normal token (because direction didn't change, only size did).
+ - But the "length of x" factor in every single dot product is 100× bigger.
+ - Therefore every single dot product comes out 100× larger.
+ - Therefore many more of them cross their thresholds.
+ - Therefore many more features fire.
+
+Magnitude isn't seen — it's INHERITED. It rides along inside every dot product the SAE performs, silently inflating all of them at the same time. The SAE has no way to filter it out, because it doesn't even have the concept of "magnitude" as a separate thing. It just does dot products, and the dot products happen to scale with input size.
+
+Analogy: imagine a panel of 16,384 judges scoring how strongly a song matches each of their personal favorite tunes. Each judge has a sensitivity threshold. On a normal recording, maybe 100 judges hit their threshold. Now you turn the volume knob up to 100×. You haven't changed the song, just the loudness. But every judge's reading shoots up. Almost all of them now cross their threshold. None of them "knew" the volume changed. They just measured the signal and reacted to its size — without ever computing volume directly.
+
+That's exactly what's happening inside the SAE when the BOS token comes through.
+
+### Follow-up: walk me through one feature with actual numbers
+The general explanation is fine, but the picture clicks once you trace ONE feature through ONE input and just look at the numbers. So let's pick feature #1234 (the specific number doesn't matter — it's just one out of 16,384) and follow it.
+Feature #1234 has two things baked into it by training:
+ - Its direction: a fixed 2304-dim vector of weights. We'll call this vector w_1234 and won't write all 2304 numbers out.
+ - Its threshold: a single fixed number. Let's say theta_1234 = 1.5. (Real JumpReLU thresholds for Gemma Scope are typically in the 0.1–5 range. Different features have different values.)
+Both w_1234 and theta_1234 were learned during training and are now frozen forever.
+When an input token x arrives, the SAE computes one scalar for this feature:
+ pre_activation = dot(w_1234, x) + b_1234        (b is a small bias, often near 0)
+Let's call this z_1234. Then the JumpReLU rule fires:
+ if z_1234 > theta_1234 -> output z_1234        (feature fires with value z_1234)
+ if z_1234 <= theta_1234 -> output 0            (feature stays silent)
+Now let's run THREE different inputs through this same feature.
+Case A — a normal token whose meaning has nothing to do with feature #1234's concept:
+ z_1234 = 0.4
+ 0.4 > 1.5 ? No.
+ -> Output: 0  (silent)
+Case B — a normal token whose meaning IS aligned with feature #1234's concept. (Suppose feature #1234 represents "negative sentiment" and the token is the word "terrible".)
+ z_1234 = 2.7
+ 2.7 > 1.5 ? Yes.
+ -> Output: 2.7  (fires)
+Case C — the BOS token (about 100× the magnitude of a normal token):
+ Because every entry of x is ~100× larger, the dot product is ~100× larger too.
+ z_1234 = 0.4 × 100 = 40    (using Case A as the baseline)
+ 40 > 1.5 ? Yes, by a mile.
+ -> Output: 40  (fires loudly, even though the BOS token has nothing to do with sentiment)
+Same feature. Same threshold (1.5). Same direction (w_1234). The ONLY thing that changed in Case C is the size of the input — and that alone flipped a clean "silent" into a confident "fire."
+Now scale this up to all 16,384 features running in parallel:
+On a normal token:
+ - Most of the 16,384 pre-activations z_f are small — somewhere between -1 and +1.
+ - Only the ones aligned with this token's actual meaning push past their personal thresholds (~1–3 each).
+ - Result: about 85 features fire. (This is the canonical sparsity Google advertised.)
+On the BOS token:
+ - Every one of those 16,384 pre-activations gets multiplied by ~100.
+ - The 85 features that fired before are now FAR above their thresholds — they're at z = 200, 300, 500.
+ - But on top of that, about 4,900 additional features that previously sat just below their threshold (e.g. z = 0.3, threshold = 1.5 — silent) are now sitting at z = 30 — well above 1.5, so they fire.
+ - Result: about 5017 features fire — exactly the number we observed.
+That's the entire story in one paragraph. No feature changed its mind. No threshold moved. The input just got 100× louder, and the gates that filter "normal-loudness" inputs were never designed to filter hurricanes.
+Three concrete things this makes obvious:
+1. The threshold is PER-FEATURE. Each feature has its own theta_f. There is no global "stop after 105" rule anywhere in the SAE.
+2. The threshold is CONSTANT. theta_1234 = 1.5 (or whatever its real value is) is baked into the SAE's saved weights. The SAE has no code that updates it at inference time. It is a fixed number for life.
+3. "Sparsity of ~105" is a STATISTIC of the SAE on its training distribution. It is not a constraint enforced on every input. Hand the SAE a wildly out-of-distribution input and the statistic simply stops holding — there is no machinery to bring it back.
+
+
+### So the SAE depends heavily on the input distribution
+
+Yes — and this is one of the most important things to understand about SAEs in general, not just this one.
+
+An SAE is trained on a specific distribution of activations. It learns its thresholds, its directions, and its sparsity profile from that distribution. The sparsity numbers Google reports (like "average L0 = 105") are properties of the SAE applied to that training distribution. They are not properties of the SAE in isolation.
+
+If we feed the SAE inputs from a different distribution — averaged sentence vectors (Flag 1), BOS-sink tokens (Flag 2), activations from a different model, or activations from a different layer — the sparsity will not match the advertised number, and the features that fire may not be interpretable in the way Google's documentation describes them.
+
+So the rule of thumb is:
+
+  An SAE is only as honest as the input you feed it.
+  Same distribution as training -> behaves as advertised.
+  Different distribution as training -> all bets are off.
+
+
+
+### The math that proves it
+
+If our theory is right — "BOS activates ~5017 features, every other token activates ~85" — then the average L0 across a sentence of length T should be:
+
+  mean_L0 = (5017 + (T - 1) × 85) / T
+
+Let's check that against what we actually measured.
+
+For train, the mean sentence length was 11.5 tokens:
+  predicted = (5017 + 10.5 × 85) / 11.5 = (5017 + 893) / 11.5 ≈ 514
+  actual    = 507  ✓
+
+For val, the mean sentence length was 22.9 tokens:
+  predicted = (5017 + 21.9 × 85) / 22.9 = (5017 + 1862) / 22.9 ≈ 300
+  actual    = 297  ✓
+
+For test, the mean sentence length was 12.1 tokens:
+  predicted = (5017 + 11.1 × 85) / 12.1 = (5017 + 944) / 12.1 ≈ 493
+  actual    = 486  ✓
+
+Three independent splits, three independent predictions, all matching within ~1%. There's no way that's a coincidence. The diagnosis is right:
+
+  Every sentence's BOS token alone fires ~5017 features.
+  Every real token fires ~85 (which is exactly the canonical target).
+  The average is dominated by the one BOS outlier per sentence.
+
+It also explains the weird train/val gap from the FIRST flag: longer sentences "dilute" the BOS contribution more, so val (longer sentences on average) showed a lower mean than train/test.
+
+
+
+### Why the SAE is actually fine
+
+This is the key takeaway. The SAE is doing exactly what it was trained to do. Our extraction is correct. Our encoding is correct. The 5017 isn't broken behaviour — it's the SAE honestly reporting "this BOS token does not look like anything I was trained on, and it's so extreme that almost all my thresholds get crossed."
+
+We just shouldn't be feeding it that token in the first place.
+
+
+
+### The fix (one-liner, again)
+
+When we encode per-token features, drop the first token before doing anything with them. Either:
+
+ - At tokenization time: pass add_special_tokens=False so the BOS is never added in the first place, OR
+ - At encoding time: slice off token 0 — acts[i][1:] — so the SAE never sees it, OR
+ - At pooling time (cleanest, no re-extraction needed): when we mean-pool the SAE features across a sentence, exclude token index 0 from the average.
+
+After doing that, the per-token L0 should land in the canonical ~85 range (with low variance across sentences), and the max L0 should drop from 5017 to something like a few hundred at most. That will mean the SAE is now being used in its intended regime, and the features we extract for sentiment are trustworthy.
+
+
+
+### TL;DR for explaining this to someone
+
+1. Big language models accidentally use their first token (the BOS, "beginning-of-sentence" marker) as a dumping ground for "unused attention" — this is called an attention sink.
+2. Because of that, the BOS token's internal activations are massively larger than any normal word's.
+3. SAEs are trained on normal-word activations. When we feed them a BOS-token activation, the SAE behaves wildly because the input is outside its training distribution — almost every feature fires.
+4. Averaging across a sentence then gets dominated by that one weird BOS token, so our sparsity stats looked broken.
+5. The fix is to skip the BOS token whenever we run things through the SAE. Then the average sparsity returns to what it should be (~85 features per token).
+
+
+
+
+### STEP AFTER THE FIX — pooling the per-token features into one vector per sentence #############
+
+OK so we fixed the BOS problem. Now for every sentence we have clean SAE features at the token level —
+ meaning a sentence of T real tokens gives us a (T, 16384) sparse matrix. Each row is one token, each 
+ row has 16,384 features.
+
+But for the actual comparison with the linear probe, the linear probe produces ONE prediction per sentence.
+ So we also need ONE feature vector per sentence — not a stack of T of them. We need to collapse that T-token 
+ axis down.
+
+This collapsing step is called POOLING. It's exactly what we did originally (when we mean-pooled Gemma
+ activations before the SAE), except now we do it AFTER the SAE instead of before. That's the correct order,
+  because the SAE has already seen each token individually in its natural form, exactly the way it was trained 
+  to. We're only averaging features now, not raw activations — and the features are already meaningful, 
+  so averaging them is safe.
+
+
+
+### What is pooling, in one line
+
+Pooling = "combine multiple rows into one row." We have T rows of 16,384 numbers, and we need to reduce 
+that to 1 row of 16,384 numbers. There are different ways to combine — we pick two:
+
+ - MEAN pool: for each of the 16,384 features, take the AVERAGE of its values across the T tokens.
+   Asks: "on average, how strongly was feature f active in this sentence?"
+
+ - MAX pool: for each of the 16,384 features, take the MAXIMUM value across the T tokens.
+   Asks: "did feature f ever fire strongly at SOME point in this sentence?"
+
+Both give us a (16384,) vector per sentence. They just answer slightly different questions about the sentence.
+
+
+
+### Why we save both
+
+Take a sentence like "this movie was terrible." The sentiment is carried mainly by the word "terrible." 
+The "negative sentiment" feature fires hard on that one token, and stays silent on the other three.
+
+ - Mean pool divides "terrible's" strong signal by 4 (the number of tokens). The sentiment feature ends up 
+ with a smaller value because the silent tokens dragged the average down.
+ - Max pool keeps "terrible's" strong signal untouched, because max ignores the silent tokens entirely.
+
+So max pool tends to work better when one word carries the meaning (like sentiment), and mean pool tends to 
+be smoother but can wash out short sharp signals. Both are reasonable, both are cheap to compute, and we save 
+both so we can pick the better one (or compare them) in the final classification step.
+
+
+
+### What we got out — the actual files
+
+For every split we now have TWO new files:
+
+ - {split}_sae_features_mean.npy  ->  shape (N, 16384)
+ - {split}_sae_features_max.npy   ->  shape (N, 16384)
+
+So six files total (train/val/test × mean/max), each a clean rectangular matrix that lines up row-for-row with 
+our existing labels. That matrix has the same SHAPE we use for a linear probe — except instead of 2304 raw Gemma 
+activations per sentence, we now have 16,384 SAE features per sentence.
+
+Two parallel representations of the same sentences:
+
+ - Linear probe side:   (N, 2304)    raw Gemma layer-12 activations
+ - SAE side:            (N, 16384)   sparse interpretable features  (mean OR max)
+
+That's exactly the setup we need for the head-to-head comparison.
+
+
+
+### What the diagnostics tell us
+
+Numbers from our run:
+
+  train: tokens/sentence  mean=10.5  min=1  max=55
+         dead features in mean-pool = 3160
+         dead features in max-pool  = 3160
+  val:   tokens/sentence  mean=21.9  min=2  max=52
+         dead features = 3934 / 3934
+  test:  tokens/sentence  mean=11.1  min=1  max=54
+         dead features = 4605 / 4605
+
+Three things worth noticing:
+
+1. Tokens per sentence are EXACTLY ONE less than what we had before. That's the BOS being gone, as 
+intended. The min=1 just means some sentences ended up as a single real token after stripping the BOS — 
+they still produce a perfectly valid (1, 16384) feature row.
+
+2. "Dead features" means features that NEVER fired on any token of any sentence in that split. About 3000–4600 
+of the 16,384 are dead in each split. That's healthy — SAEs are over-complete on purpose (16K features for only 
+2304 dims), and not every concept the SAE knows about will show up in movie reviews. A feature about French 
+history shouldn't fire on SST-2; we EXPECT a chunk of the dictionary to be silent.
+
+3. Dead count for mean-pool and max-pool is IDENTICAL in every split. This looks suspicious at first, but it's
+ a mathematical certainty:
+    - A feature is dead in max-pool iff its max across tokens is 0 -> it never fired anywhere.
+    - A feature is dead in mean-pool iff its sum across tokens is 0. Since SAE outputs are non-negative 
+    (they're either zero or positive — never negative), the only way the sum is 0 is if every value is 0 -> 
+    again, never fired anywhere.
+   Same condition reached two different ways, so the counts MUST match. The matching numbers are actually a 
+   built-in sanity check that nothing weird happened during pooling.
+
+
+
+### Where this leaves us — the big picture again
+
+After step 7 the SAE side of the pipeline is fully baked. For every sentence we now have three aligned 
+representations:
+
+ - (2304,)   raw Gemma activations          -> used by the linear probe
+ - (16384,)  mean-pooled SAE features       -> used by the SAE comparison
+ - (16384,)  max-pooled SAE features        -> alternate flavour to try
+
+All three line up row-by-row with the same labels. We can finally do the actual experiment this whole project
+ was about:
+
+ - Train a logistic regression on the 2304-dim probe activations and measure its test accuracy.
+ - For each of the 16,384 SAE features, measure its correlation with the sentiment label, and pick the top few 
+ as a classifier.
+ - Compare the two methods on accuracy.
+ - Compare the DIRECTIONS each method finds (cosine similarity between the probe weight vector and the top SAE 
+ feature's decoder vector).
+
+No more weird debugging, no more pipeline surprises, no more BOS hurricanes. From here it's just a fair 
+side-by-side comparison.
+
+
+
+
+### Follow-up: tying together token-level, sentence-level, and split-level — how does ~105 active 
+features per token turn into 3000+ dead features per split?
+
+Sometimes when we look at "L0 = 105 per token" and "3160 dead features in train" at the same time, 
+the picture gets fuzzy. Let's tie all three levels together cleanly in one place.
+
+First a quick notation cleanup — easy to mix this up:
+ - ONE token   -> shape (2304,)
+ - ONE sentence of T tokens -> shape (T, 2304)
+ - The SAE expands the 2304 dimension to 16,384, so the same shapes after the SAE become (16384,) and (T, 16384)
+
+
+
+### Level 1: what happens to ONE token
+
+You feed the SAE a single 2304-dim vector. Out comes a 16,384-dim vector. So yes, 2304 -> 16,384.
+
+But of those 16,384 numbers, only about 105 are non-zero (this is the canonical L0 ≈ 82–105 target). 
+The other ~16,279 are exactly zero. So even though the output technically lives in 16,384-dim space, 
+the actual information for that one token is described by just ~105 active features.
+
+For a whole sentence at once, the SAE just does this for each token in parallel:
+ - input  (T, 2304)
+ - output (T, 16384)
+ - each of the T rows has ~105 active features, zeros everywhere else
+
+
+
+### Level 2: "the word 'love' is described by 105 features" — yes, but in CONTEXT
+
+When the token "love" appears, the SAE describes it as a sparse mix of ~105 features. Those might be things like:
+
+ - "positive emotion"
+ - "verb, root form"
+ - "common English word"
+ - "abstract noun"
+ - "romance-related context"
+ - ... and roughly 100 more
+
+The important nuance: the exact 105 features can change with context. The same word "love" in 
+"I love this movie" will activate a slightly different set of 105 features than the same word in
+ "the love letter was old." That's because the activation we hand the SAE is NOT the raw word embedding — 
+ it's the layer-12 residual stream, which has already been updated by Gemma's attention to reflect the 
+ surrounding tokens. So the input the SAE sees is "love after Gemma has read the surrounding context", 
+ and that contextualized vector is what determines which 105 features fire.
+
+In short: the SAE doesn't memorize "love uses these 105 features always." It re-computes the sparse set 
+of features for every token-in-context.
+
+
+
+### Level 3: scaling up to one SENTENCE (after pooling)
+
+Take a sentence of 10 tokens. After the SAE you have a (10, 16384) matrix:
+
+  token 1: ~105 features active
+  token 2: ~105 features active
+  ...
+  token 10: ~105 features active
+
+Now pool down to a single (16384,) vector for the whole sentence:
+
+ - A feature is non-zero in the pooled vector iff it fired on AT LEAST ONE of the 10 tokens.
+ - A feature is zero in the pooled vector iff it never fired on ANY of the 10 tokens.
+
+So the count of active features at the sentence level is the UNION of the token-level active sets.
+
+If all 10 tokens fired completely different features, the union would be 10 × 105 = 1050. In practice 
+there's a lot of overlap — common features like "this is short English text" or "common noun" fire on many 
+tokens — so the real union is usually a few hundred features per sentence, not 1050. Still, it's clearly more
+ than 105.
+
+So at the sentence level, we go from "~105 active per token" to "a few hundred active per sentence." Sparsity 
+loosens as we widen the unit from a token to a sentence.
+
+
+
+### Level 4: scaling up to one SPLIT (dead features)
+
+A feature is "dead in train" iff it never fired on ANY token of ANY sentence in train. In other words:
+
+ - The feature had 22,991 chances to fire (one per train token).
+ - It crossed its threshold exactly 0 times.
+
+In our train split, 3,160 of the 16,384 features are dead (about 19%). That means around 3,160 of the SAE's 
+"concepts" don't have any movie-review token that aligns with them strongly enough to fire. Reasonable — a 
+"19th-century French literature" feature won't trigger on SST-2.
+
+Why dead counts GROW as splits shrink:
+
+  train: 22,991 tokens -> most chances -> 3160 dead (19%)
+  val:   11,431 tokens -> fewer        -> 3934 dead (24%)
+  test:   6,061 tokens -> fewest       -> 4605 dead (28%)
+
+Each feature has a small per-token firing probability. The bigger the split, the more chances each feature 
+gets to fire at least once. With fewer tokens, more features get unlucky and never get triggered — they're 
+not "really" dead, just unfired in this particular sample.
+
+If we ran the same SAE on all 70K SST-2 sentences, the dead count would shrink further toward some "true" 
+floor — features that genuinely never apply to movie reviews regardless of sample size.
+
+
+
+### The whole chain in one paragraph
+
+Each token gets expanded by the SAE from 2304 to 16,384 dims, but only ~105 of those are active. Those 105 
+vary depending on the token's context. When we pool a sentence's tokens together, the active features in the
+ pooled vector are the UNION across the sentence's tokens — typically a few hundred. When we look at an entire 
+ split (thousands of sentences, tens of thousands of tokens), features that never fire on ANY token of ANY 
+ sentence are called dead. Bigger splits give every feature more chances to fire at least once, so they have 
+ fewer dead features. Smaller splits have more dead features. None of this means the SAE is broken — it just 
+ means: movie reviews don't need every concept in the SAE's dictionary, and short samples surface fewer 
+ concepts than long ones.
+
+
+
+### Quick numerical sanity check on our train split
+
+ - Tokens in train: 22,991
+ - Features that fire per token on average: ~78 (your measured L0)
+ - Total firings across the whole split: 22,991 × 78 ≈ 1.79 million
+ - Spread across 16,384 features: 1.79M / 16,384 ≈ 109 firings per feature on average
+
+But that's an average. The distribution is very uneven:
+ - A small handful of "common" features fire thousands of times.
+ - A large tail of "rare" features fire a small number of times.
+ - And about 3,160 features never fire even once in 22,991 tokens.
+
+Exactly the kind of skewed, long-tailed distribution you'd expect from a sparse over-complete dictionary 
+on a narrow domain. Everything checks out.
+
+
+
+
+### Follow-up: if 78 out of 16,384 fire per token, shouldn't there be way more than 3,000 dead features per split?
+
+This is the most natural confusion to hit at this point. The intuition feels right: if every token has ~16,300 
+silent features and we have 22,991 tokens, then surely we should be seeing hundreds of thousands of 
+"dead features," not a measly 3,160.
+
+The trap is that we're mixing up two completely different counting modes. Let's separate them.
+
+
+
+### Mode A: counting silent (token, feature) PAIRS
+
+Your math:
+ - For each token, about 16,384 - 78 = 16,306 features are silent.
+ - 22,991 tokens × 16,306 silent features per token ≈ 374,830,000 silent (token, feature) pairs.
+
+That number is correct — there really are about 375 MILLION (token, feature) pairs in the train split where 
+the feature stayed at zero for that token. But that count is NOT what we mean by "dead features." We're 
+counting silences, not features.
+
+It's like saying: "There are 22,991 days in our log, and on each day most shops in the city are closed
+ at midnight, so there must be millions of closed shops." There aren't. There are X shops, and each shop 
+ is closed on many different nights. The shops themselves are still the same X shops.
+
+
+
+### Mode B: counting DEAD features (the thing we actually report)
+
+A feature is "dead in train" iff it stayed silent on EVERY ONE of the 22,991 tokens. Not "silent on most 
+tokens" — silent on ALL of them.
+
+That's a MUCH stricter condition. For a feature to be dead, all 22,991 chances to fire must have failed. 
+If a feature fires even once — on a single token in a single sentence — it is not dead.
+
+So the question is really: "out of 16,384 features, how many ended up failing all 22,991 chances?" 
+The answer is 3,160. The other 13,224 features each fired at least one time somewhere in those 22,991 tokens.
+
+
+
+### Why this number isn't bigger — the probability intuition
+
+Let's see what happens to a feature with even a tiny probability of firing.
+
+Suppose a feature has a 0.5% chance of firing on any given token (which is roughly what you'd expect if 
+firings were spread uniformly — 78/16,384 ≈ 0.476%).
+
+The probability that it NEVER fires in 22,991 tokens is:
+ (1 - 0.005)^22,991 ≈ e^(-115) ≈ essentially zero
+
+So if every feature had a uniform 0.5% chance to fire per token, statistically ZERO features would end up dead. 
+They'd all fire at least once just from sheer number of opportunities.
+
+But we DO see ~3,160 dead features. What's going on?
+
+The answer is that firings are NOT uniformly distributed. The 16,384 features fall into roughly three groups:
+
+ - Common features (a few hundred): fire on almost every token. Things like "this is English text," "this is a 
+ content word," "modern document," etc. These rack up thousands of firings.
+
+ - Rare-but-real features (most of the dictionary): fire occasionally on tokens whose meaning aligns with the 
+ concept. Each one might fire a few dozen times across the split.
+
+ - Irrelevant features (~3,160 of them): represent concepts that don't appear in movie reviews at all. Maybe 
+ "19th-century French literature", "Python syntax", "medical jargon", "computer code identifier", 
+ "Mandarin character", etc. Their probability of firing on any SST-2 token is effectively zero. So 
+ even given 22,991 chances, they fire zero times.
+
+The 3,160 dead features are not "unlucky" features that happened to miss. They are features that 
+GENUINELY don't apply to the movie-review domain. The SAE has 16,384 features because Google trained it on 
+the entire pre-training distribution of Gemma — code, math, web text, books, multilingual stuff, etc. SST-2 
+is a tiny slice of that, so a chunk of the dictionary just doesn't apply.
+
+
+
+### The cleanest way to say it
+
+There are two completely different "zero" counts and they answer different questions:
+
+ - Q1: "How often is a feature silent?" -> Count silent (token, feature) pairs. Huge number (~375M). Not
+  interesting.
+ - Q2: "How many features are NEVER used by this entire split?" -> Count features whose count in Q1 sums 
+ to all-22,991-tokens. Much smaller number (~3,160). This is what "dead" means.
+
+Your intuition was applying Q1's logic to Q2's count. That's why it looked off by orders of magnitude. 
+Once you switch to the right counting mode, ~3,160 is exactly the kind of number you'd expect: it's 
+roughly "the fraction of Gemma's full-distribution concepts that simply don't show up in movie reviews."
+
+
+
+### One more way to make it concrete
+
+Imagine each of the 16,384 features as a vending machine in a giant mall. The mall is open for 22,991 hours.
+
+ - "Silent (token, feature) pair" = a particular machine wasn't used in a particular hour. Of course most 
+ machines aren't used in most hours — that count is enormous and uninteresting.
+ - "Dead machine" = this machine was NEVER used in any of the 22,991 hours. That's a much harder bar. Most
+  machines (~13,200 of them) sell something at least once. About 3,160 machines (the ones selling, say, 
+  "19th-century French snacks" in an English movie-review mall) are never touched at all.
+
+That's why the dead count is in the thousands rather than the hundreds of millions. We're asking a much 
+sharper question than "how often is a feature silent?" — we're asking "how many features sit unused for the 
+entire dataset?"
+
