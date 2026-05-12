@@ -1,0 +1,87 @@
+
+**1. Using pretrained SAEs on a frozen LLM**
+
+The foundational interpretability work establishing that SAEs decompose LLM activations into monosemantic features:
+
+- **Bricken et al. (2023)**, *"Towards Monosemanticity: Decomposing Language Models With Dictionary Learning."* 
+Anthropic, Transformer Circuits Thread. — Established the SAE methodology for language-model interpretability.
+- **Cunningham et al. (2023)**, *"Sparse Autoencoders Find Highly Interpretable Features in Language Models."* — 
+Showed SAEs can be applied post-hoc to a frozen LM to find interpretable directions.
+- **Templeton et al. (2024)**, *"Scaling Monosemanticity: Extracting Interpretable Features from Claude 3 Sonnet."*
+ Anthropic. — Demonstrated SAE-based interpretation at scale.
+
+For our specific SAE (Gemma Scope):
+
+- **Lieberum et al. (2024)**, *"Gemma Scope: Open Sparse Autoencoders Everywhere All At Once on Gemma 2."*
+ Google DeepMind. — The release paper for the SAEs we're using.
+- **Rajamanoharan et al. (2024)**, *"Jumping Ahead: Improving Reconstruction Fidelity with JumpReLU Sparse 
+Autoencoders."* DeepMind. — Describes the JumpReLU architecture used by Gemma Scope.
+
+---
+
+**2. Encoding LLM activations through an SAE for downstream analysis**
+
+- **Gao et al. (2024)**, *"Scaling and evaluating sparse autoencoders."* OpenAI. — 
+Lays out the encode/analyse pipeline for SAEs, including the "neighborhood sparse probing" methodology.
+- **Marks et al. (2024)**, *"Sparse Feature Circuits: Discovering and Editing Interpretable Causal 
+Graphs in Language Models."* — Encodes per-token activations through SAEs to find task-relevant features. 
+Directly relevant to our methodology.
+
+---
+
+**3. Dropping the BOS token (attention-sink treatment)**
+
+The attention-sink phenomenon — and the standard practice of excluding BOS from analysis:
+
+- **Xiao et al. (2023)**, *"Efficient Streaming Language Models with Attention Sinks."* ICLR 2024. — 
+The paper that named and characterised attention sinks; established that BOS accumulates disproportionate 
+attention mass.
+- **Cancedda (2024)**, *"Spectral Filters, Dark Signals, and Attention Sinks."* — Documents anomalous BOS 
+activation magnitudes and their effect on probing.
+- Discussion of BOS as an SAE outlier is also documented in the **Anthropic Transformer Circuits monthly updates 
+(2024)** and the **SAELens project documentation/tutorials** (Bloom et al.) — where dropping BOS before SAE 
+analysis is recommended as standard practice.
+
+---
+
+**4. Pooling per-token SAE features into a sentence-level representation**
+
+- **Marks et al. (2024)** (above) uses both mean and max aggregation across tokens to derive sentence-level SAE 
+features.
+- **Kantamneni & Tegmark (2025)**, *"Are Sparse Autoencoders Useful? A Case Study in Sparse Probing."* — 
+Systematically compares mean-pool vs max-pool of SAE features for downstream classification. Most directly 
+relevant to our pooling choice.
+- For the general technique of mean/max pooling token-level representations into sentence vectors: 
+**Reimers & Gurevych (2019)**, *"Sentence-BERT,"* EMNLP. — Long-established baseline in NLP.
+
+---
+
+**5. Selecting one SAE feature by correlation with labels (sparse probing)**
+
+This exact methodology — score every SAE feature against a label vector, take the top one — 
+is called **sparse probing** in the literature:
+
+- **Kantamneni & Tegmark (2025)** (above) — The definitive paper on sparse probing with SAEs. 
+Uses Pearson correlation between SAE feature columns and binary labels to rank features. 
+Our Step 5d follows this protocol almost exactly.
+- **Gao et al. (2024)** (above) — Introduces "1-sparse probing" (single SAE feature classifier) as an 
+SAE evaluation metric.
+- **Gurnee et al. (2023)**, *"Finding Neurons in a Haystack: Case Studies with Sparse Probing."* — 
+Earlier work that established sparse probing (on raw neurons before SAEs); the conceptual ancestor.
+- **Bricken et al. (2023)** (above) — Original feature-discovery-by-label-activation work in the SAE setting.
+
+---
+
+**Putting it together — what to cite in your FYP**
+
+The strongest single citation for our whole SAE pipeline is **Kantamneni & Tegmark (2025) —
+ *"Are Sparse Autoencoders Useful? A Case Study in Sparse Probing."*** It covers:
+- Encoding per-token activations through Gemma Scope SAEs
+- Pooling strategies (mean vs max)
+- Sparse probing (correlation-based feature selection)
+- Comparison against linear probes (their headline finding)
+
+If you cite that one paper plus **Lieberum et al. (2024)** for the SAE itself and **Xiao et al. (
+    2023)** for BOS treatment, you've covered the methodological backing for everything we've done so far.
+
+Want me to save this reference list to `notes.txt` (or a separate `references.md`) before we move on?
