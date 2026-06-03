@@ -781,3 +781,670 @@ That's why the dead count is in the thousands rather than the hundreds of millio
 sharper question than "how often is a feature silent?" — we're asking "how many features sit unused for the 
 entire dataset?"
 
+---------------------------------------
+Now when we have extracted features using saes, and pooled them, and now we have two clear columns or may be sides
+Side              Matrix                        what we have
+LInear Probes     [N, 2304] activations         Alraedy trained --> w (2304) and 92% test accuracy             
+SAEs              [N, 16384] features           Raw features, nothing trained yet
+
+The next clean step we would have is to find which of the 16,384 features correspond to sentiments (our input sentiment data)
+So, the question is, how do we do that?
+We do that, for each feature column, its correlation with the label vector. 
+So, here is how we will do it.
+We have two sepertate files for each split [train, val, test]
+For  example
+data/SAEs/train_sae_features_max.npy which has shape (2000, 16384) -----> only the SAEs feature values
+data/SAEs/train_labels.npy --> shape (2000,) -- only the labels (0 or 1)
+
+And the good thing is that they are aligned by the row order, e.g row i of the features file correspond to 
+label i of the labels files. Same setup as linear probes, labels are never inside the feature matrix. 
+
+They are actually logically joined, even though stored seperately. 
+For example
+row i          labes (from label files)        feat 0         feat 1        .......     feat 16383
+0               1 (pos)                        2.4             0                        0
+1               0 (neg)                        55              555                      36838
+
+For one feature column (e.g. feat 1)
+1. Pull the 2000 values of feat 1 out of features matrix --> one long array of x of length 2000. 
+2. Take the labels array y from the labels file → also length 2000.
+3  Compute one correlation number between x and
+
+
+
+### Quick clarification — wait, how does ONE feature have 2000 values?
+
+This part is the bit that feels weird at first. We keep saying "pull the 2000 values of feat 1 
+out of the features matrix" — but how does a single feature end up with 2000 numbers? Shouldn't one 
+feature just be one number?
+
+The trick is to remember the SHAPE of the features matrix:
+
+  data/SAEs/train_sae_features_max.npy  ->  shape (2000, 16384)
+
+That matrix has:
+ - 2000 ROWS    -> one row per sentence in the train split
+ - 16,384 COLUMNS -> one column per SAE feature
+
+So it's a giant grid of numbers. The cell at row i and column f is just "how strongly did feature f 
+fire on sentence i."
+
+                feat 0    feat 1    feat 2    ...    feat 16383
+  sentence 0     2.4       0         0                  0
+  sentence 1     55        555       0                  36838
+  sentence 2     0         3.1       1.2                0
+  ...            ...       ...       ...                ...
+  sentence 1999  ...
+
+
+
+Now you can read this same matrix in TWO different directions, and both are useful:
+
+ - One ROW = one sentence, described by 16,384 numbers (its full SAE feature vector for that sentence).
+ - One COLUMN = one feature, with 2000 numbers (its value across all 2000 sentences in train).
+
+When we want to find sentiment features, we read the matrix the COLUMN way. We pull out one column (say feat 1)
+ and we get 2000 numbers — one number for each sentence saying "how loudly did this feature fire on that sentence." 
+ That's where the "x of length 2000" comes from.
+
+Then we pair that column with the labels array (also length 2000 — one label per sentence) and ask the simple 
+question: "do these two arrays move together?" If feat 1's values tend to be HIGH whenever the label is 1 
+(positive) and LOW whenever the label is 0 (negative), then feat 1 is a candidate sentiment feature.
+
+We repeat this 16,384 times — once per feature column — and end up with 16,384 correlation numbers. The top 
+ones are our candidates.
+
+
+
+So the short answer to "each feature has how many values?":
+
+  Each feature has as many values as there are sentences in that split.
+   - train -> 2000 values per feature
+   - val   -> 500 values per feature
+   - test  -> 500 values per feature
+
+One value per sentence, per feature. The features matrix is just every combination of those laid out as a grid.
+
+
+
+Tiny analogy that helps: imagine a school report card spreadsheet.
+ - Rows = students (2000 students = 2000 sentences in our case).
+ - Columns = subjects (16,384 subjects = 16,384 features).
+ - Each cell = that student's score in that subject.
+
+If you want to know "which subject best predicts whether a student is happy or sad?" you'd pull out one 
+COLUMN at a time (one subject's scores across all 2000 students) and check how it lines up with the happy/sad 
+labels. That's exactly what we're doing — just with sentences instead of students and SAE features instead of 
+school subjects.
+
+
+
+### Tiny follow-up — what exactly do we COMPUTE between a feature column and the labels?
+
+Good check. So far we've been saying "correlate feature f with the labels" but we never quite pinned 
+down what that operation IS. A few related ideas have been floating around — correlation, dot product, 
+direction — and they're easy to muddle. Let's separate them.
+
+
+
+### What we actually compute: PEARSON CORRELATION
+
+Given:
+ - x = the 2000-length column for feature f (one value per sentence)
+ - y = the 2000-length labels array (each entry is 0 or 1)
+
+Pearson correlation is one number that asks: "do x and y go up and down together?"
+
+The formula looks scary but the idea is simple:
+
+ 1. Subtract the mean of x from every entry in x  (so x is now centered around 0)
+ 2. Subtract the mean of y from every entry in y  (so y is now centered around 0)
+ 3. Multiply each pair of centered values together and sum them up.
+ 4. Divide by (std of x) × (std of y) to normalize the answer.
+
+The result is a single number r between -1 and +1:
+
+ -  r = +1   -> perfect positive correlation. Whenever feat f fires high, the label is 1 (positive). 
+ Strong sentiment feature.
+ -  r = -1   -> perfect negative correlation. Whenever feat f fires high, the label is 0 (negative). 
+ Also a strong sentiment feature, just flipped.
+ -  r =  0   -> no relationship. The feature firing is independent of the label.
+ -  0 < r < 1 -> partial positive relationship. This is what we usually see in practice for real features.
+
+We do this for every f from 0 to 16,383 and end up with 16,384 correlation numbers. The ones with the largest 
+|r| are our candidate sentiment features.
+
+
+
+### Is this just a dot product?
+
+Almost. Correlation IS basically a normalized centered dot product. Same backbone, just rescaled:
+
+ - Raw dot product:           x · y = sum(x_i * y_i)
+ - Centered dot product:      same but after subtracting means -> this is COVARIANCE × n
+ - Centered AND normalized:   covariance / (std_x * std_y) -> this is CORRELATION
+
+So if you just take a raw dot(feature column, labels), you get a number that captures roughly the same idea, 
+but scale-dependent — features with big-magnitude activations dominate, even if they don't actually track the 
+label.
+
+For example, if feat 999 happens to have huge values across ALL sentences regardless of label, raw dot(x, y) 
+is huge — but that doesn't mean it predicts sentiment. Correlation strips out that scale issue by dividing 
+through by stds, so a feature is only rewarded for moving WITH the label, not for being loud in general.
+
+That's why we use correlation, not raw dot product, at this step.
+
+
+
+### What does "direction" mean here?
+
+This one's important. "Direction" doesn't really apply at this step — it shows up LATER, when we compare 
+against the linear probe. Let's set the scene.
+
+In the LINEAR PROBE world, the "sentiment direction" is the weight vector w that logistic regression 
+learned — a 2304-dim arrow in Gemma's activation space. We TRAINED that arrow from scratch on the labels.
+
+In the SAE world, every one of the 16,384 features already comes with its own built-in direction. That
+ direction is the feature's DECODER column — a 2304-dim vector baked into the SAE's weights at training 
+ time. Each decoder column says: "if this feature has value v, add v × (this direction) when reconstructing 
+ the activation."
+
+So when we say "the SAE found a sentiment direction," what we actually mean is:
+
+ 1. We find which feature f has the largest correlation with the labels.
+ 2. We look up that feature's decoder column -> a 2304-dim vector.
+ 3. THAT vector is the sentiment direction the SAE proposes.
+
+The big difference vs the linear probe: we didn't train this direction. The SAE already came with all 16,384 
+candidate directions pre-built, and we just picked the one whose firing pattern aligns with the sentiment labels.
+
+That's what makes the final comparison meaningful:
+
+ - Linear probe direction:    w_LP                    in R^2304  (trained from scratch)
+ - SAE sentiment direction:   decoder column of f*    in R^2304  (already existed, picked by correlation)
+
+We can then take cosine similarity between w_LP and the decoder column. If both methods are honestly finding 
+"sentiment in Gemma's layer 12," those two arrows should point in roughly the same direction. That's the big 
+payoff of the comparison.
+
+
+
+### TL;DR
+
+ - At THIS step we compute one Pearson correlation per feature: r_f = corr(feature column f, labels). That 
+ gives 16,384 numbers.
+ - Correlation is just a centered, normalized dot product — same idea as a dot product, but scale-invariant.
+ - "Direction" doesn't come in yet. It enters LATER, when we look up the decoder column of the top-correlated 
+ feature and compare it against the linear probe's weight vector with cosine similarity.
+
+
+
+### Quick discussion — why we ONLY use train for the correlation step
+
+Same rule we followed in the linear probe side: train is for DECIDING things, test is for GRADING things. 
+You can't grade your own exam.
+
+We have 16,384 features. If we computed correlations on the TEST split and picked the top feature from there, 
+we'd be making the choice using the very data we're about to score ourselves on. The accuracy we then report on 
+test would be inflated, because we specifically picked a feature that happens to look good on those 500 test 
+sentences — 
+maybe partly by luck. It wouldn't tell us anything about whether the feature really generalises.
+
+The clean rule:
+
+ - TRAIN -> compute correlations, pick the top sentiment feature.  ("decide what to look for")
+ - TEST  -> never touched during the decision.  ("sealed envelope")
+ - Then apply the picked feature to test and report whatever number comes out. That number is honest because the 
+ feature was 
+ never tuned to test.
+
+It's exactly the same logic we used for the linear probe: we fit w on train activations only, and only then 
+evaluated on test. 
+If we'd fit w using test activations, the 92% test accuracy would have been meaningless — it would just be the 
+classifier memorising 
+the test set.
+
+So the principle is the same in both pipelines:
+
+  decide on train -> grade on test
+
+If we mix the two, the grade is fake.
+
+
+
+Correlation Result
+
+[mean-pool] features: (2000, 16384)
+[mean-pool] top 20 by |corr|:
+rank   feat     corr       sign  nonzero%
+   1  14733  -0.4904   negative     48.8%
+   2  13367  -0.4374   negative     36.9%
+   3   7234  -0.4120   negative     24.7%
+   4  10511  +0.3351   positive     42.0%
+   5   8000  +0.3210   positive     25.8%
+   6  10249  -0.2933   negative     27.9%
+   7   1731  -0.2821   negative     17.9%
+   8   8836  -0.2798   negative     25.4%
+   9   3451  -0.2784   negative     28.7%
+  10  10811  -0.2711   negative     36.2%
+  11  10449  -0.2699   negative     20.8%
+  12  12920  +0.2626   positive     40.0%
+  13   2168  -0.2598   negative     13.4%
+  14  11997  -0.2583   negative     14.8%
+  15   6585  -0.2523   negative     15.3%
+  16  10914  -0.2507   negative     19.3%
+  17  13156  -0.2497   negative     12.8%
+  18  14291  -0.2484   negative     16.4%
+  19  13435  +0.2470   positive     21.6%
+  20   9544  +0.2470   positive     39.5%
+[mean-pool] features with |corr| > 0.3: 5
+[mean-pool] features with |corr| > 0.5: 0
+
+
+
+### How to read this table — precisely
+
+Quick re-set on what was actually computed, because this is the bit that's easy to flip in your head.
+
+We did NOT do "for one sentence, compute its correlation with 16,384 features." That doesn't make sense — 
+a correlation needs two equal-length lists, not a single sentence vs many features.
+
+We DID do this, exactly: for each feature column (one out of 16,384), we pulled its 2,000 numbers 
+(its value across all 2,000 train sentences), paired them with the 2,000-long labels array, and computed ONE 
+correlation number between those two equal-length lists.
+
+To make this concrete, the two lists we feed into the correlation formula look like this:
+
+   feature column                          labels array (y)
+   (e.g. feat 14733)                       
+   shape: (2000,)                          shape: (2000,)
+
+       value                                  value
+   ---------                              ---------
+   row 0      2.4                         row 0      1
+   row 1      0                           row 1      0
+   row 2      555                         row 2      0
+   row 3      0                           row 3      1
+   row 4      8.1                         row 4      1
+   row 5      0                           row 5      0
+   ...        ...                         ...        ...
+   row 1998   8.7                         row 1998   0
+   row 1999   0                           row 1999   1
+
+So yes — the labels array is just one column, 2,000 rows tall, each entry either 0 or 1. The feature 
+column is also one column, 2,000 rows tall, but with real-valued numbers (sometimes zero, sometimes 
+the feature's firing strength). 
+
+Both arrays have shape (2000,). They are lined up row-for-row: row i of the feature column corresponds 
+to row i of the labels. We hand these two equal-length arrays to the Pearson correlation formula and 
+get back ONE number between -1 and +1 that summarises "do these two columns rise and fall together?"
+
+We repeated that 16,384 times — once per feature column. So at the end we had 16,384 correlation numbers, 
+each between -1 and +1. The table above is just the top 20 of those 16,384 numbers, sorted by absolute value.
+
+
+
+### What each ROW of the table tells you — line by line
+
+Take the first row:
+
+  rank   feat     corr       sign  nonzero%
+   1    14733  -0.4904   negative     48.8%
+
+Reading the columns:
+
+ - rank = 1
+   This is the strongest correlation we found, out of 16,384.
+
+ - feat = 14733
+   The feature ID inside the SAE. Just a label — index 14,733 out of 0..16,383. It's not "meaningful" by itself; 
+   it's just a name we use to refer to that feature.
+
+ - corr = -0.4904
+   The Pearson correlation between this feature's 2,000 values and the 2,000 labels. Always in [-1, +1].
+     A correlation of -0.4904 specifically means: when this feature's value goes UP across the training set, 
+     the label tends to go DOWN (toward 0 = negative). The relationship is moderately strong but not perfect.
+
+ - sign = negative
+   This is just the SIGN of the correlation, rephrased. "negative" means the feature predicts 
+   label = 0 (negative sentiment). "positive" means it predicts label = 1 (positive sentiment). Both kinds are 
+   useful — the direction just tells us which class the feature flags.
+
+ - nonzero% = 48.8%
+   Out of 2,000 train sentences, this feature was non-zero on 976 of them (48.8%). In other words, this feature 
+   actually fired on 48.8% of the data. The other 51.2% of the time it was exactly zero (silent).
+
+So in one English sentence:
+
+  "Feature 14733 fired on 48.8% of training sentences, and on the sentences where it fired strongly, the label 
+  was usually 0 (negative). The strength of that pattern is 0.4904 — moderate, not perfect."
+
+Every other row of the table is read the same way.
+
+
+
+### What the magnitude of corr means — concretely
+
+ - |corr| = 0    -> feature firing is unrelated to the label. Useless predictor.
+ - |corr| = 0.5  -> a moderate predictor. If used alone as a classifier, would give somewhere around 70–75% 
+ accuracy.
+ - |corr| = 1    -> perfect predictor. Whenever the feature fires, you can read the label off it directly. We 
+ never see this in practice.
+
+Our top correlation is 0.5. That means even our best single feature only gives us a moderate signal — no single 
+SAE feature is a complete sentiment detector.
+
+
+
+### What the SIGN means — concretely
+
+ - corr > 0 -> feature value tends to be LARGER when label = 1.   This feature lights up on POSITIVE sentences.
+ - corr < 0 -> feature value tends to be LARGER when label = 0.   This feature lights up on NEGATIVE sentences.
+
+Both kinds of features are equally useful. The sign just tells us which class to associate the feature with.
+
+In our table, most of the top 20 features have NEGATIVE sign. That means most of the best sentiment features the 
+SAE found are negativity detectors (they fire when something sounds bad). Only ~5 of the top 20 are positivity 
+detectors. This is just an observation about which kind of features happen to land at the top — it doesn't mean 
+the SAE doesn't have positivity features. It means the strongest single signals in our 2,000 train sentences 
+happen to be on the negative side.
+
+
+
+### What "nonzero%" tells us about each feature
+
+The nonzero% column tells us how OFTEN the feature even fires at all in the training data. Two extreme cases 
+worth keeping in mind:
+
+ - High nonzero% (like 48.8% for feat 14733) means the feature is GENERIC. It fires on lots of sentences, so 
+ it's picking up a broad pattern. Useful for general classification.
+
+ - Low nonzero% (like 12.8% for feat 13156) means the feature is SPECIFIC. It only fires occasionally, but 
+ when it does, it's a strong reliable signal. Useful when its trigger is present.
+
+A small nonzero% with a moderate-or-better correlation is actually a sign of a sharply-tuned feature — it's not 
+firing on noise, it's firing on the right cases. So features like feat 13156 (12.8% nonzero, -0.25 corr) probably 
+represent a more specific "kind of negativity" than the generic top feature.
+
+
+
+### What this whole table boils down to — three takeaways
+
+1. The best single sentiment feature we found is feat 14733. It has correlation -0.49 (mean-pool) and -0.50 (
+  max-pool), and fires on about half of training sentences. Both pooling strategies agree on this feature, so 
+  it's a real concept, not noise.
+
+2. No single feature is a perfect predictor. The strongest is at 0.50, not 1.0. So sentiment is NOT represented
+ by one neat feature inside the SAE — it's spread across multiple features. To match the linear probe's 92% we'd 
+ need to combine several features, not just one.
+
+3. The top features lean negative. Out of the top 20 in mean-pool, about 15 fire on negative sentences and 5 fire 
+on positive ones. So the SAE's strongest single sentiment signals in our data happen to be negativity detectors.
+ Positivity is still there, just at slightly weaker correlations.
+
+That's the table. Nothing more, nothing less.
+
+
+
+### The biggest confusion I had with this — written down so I don't forget
+
+This was the part that almost made me lose the comparison story with linear probes, so I want 
+to write it down properly in plain words. Three little knots got me stuck. Here they are, untangled.
+
+
+
+### Knot 1 — a feature is NOT predicting anything
+
+When I was reading the table, my brain kept wanting to say "feat 14733 is predicting negative sentiment" or 
+"the feature is trying to label this row." Both phrasings are wrong and they made everything else confusing.
+
+The truth is much smaller than that:
+
+  A feature is just a number.
+  It has no opinion. It does not predict anything. It does not want anything.
+  It is a single value the SAE outputs for each sentence.
+
+That's all. We — the analysts, after the fact — see that those numbers form a pattern with the labels, and 
+WE start calling the feature a "negativity detector." But the feature itself is passive. It just produces numbers.
+
+If I keep this in mind, I stop trying to imagine the feature having intentions about each row, and the rest 
+falls into place.
+
+
+
+### Knot 2 — there is no universal "high = positive" rule
+
+I kept assuming that high feature value should mean positive sentiment. There is NO such universal rule. Each 
+feature has its own sign, and the SIGN OF THE CORRELATION tells me which way that specific feature points:
+
+  correlation sign       what "high firing" means         what "low firing" means
+  ----------------       ------------------------         -----------------------
+  POSITIVE (+)           tends to be label = 1 (pos)      tends to be label = 0 (neg)
+  NEGATIVE (-)           tends to be label = 0 (neg)      tends to be label = 1 (pos)
+
+For our feat 14733 (corr = -0.49), high firing means negative-leaning sentence. For our feat 10511 
+(corr = +0.34), high firing means positive-leaning sentence. Two different features in the same SAE, two
+ different directions. The sign tells me which way to read it.
+
+
+
+### Knot 3 — correlation is over ALL 2000 rows, not just one
+
+I was trying to explain the negative correlation using a single row where the feature value and the label 
+"disagreed." That doesn't work. A correlation isn't shaped by one row. It's a summary over all 2000 rows.
+
+The pattern we are summarising is:
+
+  "Across the entire 2000-row training set,
+   the rows where feat 14733 happened to be BIG (above its column's average)
+   were mostly the rows where the label happened to be 0 (below the label column's average).
+   And the rows where feat 14733 was small/zero were mostly the rows where the label was 1."
+
+That overall, system-wide pattern is what -0.49 captures. One row by itself is meaningless — the correlation 
+comes from the alignment across the whole dataset.
+
+Also — "high" and "low" here are NOT absolute thresholds. They mean "above or below this column's own average." 
+For the labels (0/1), the average is about 0.56, so 1 is above average and 0 is below. For feat 14733, the 
+average is some specific number across all 2000 rows, and "high" means above that number.
+
+
+
+### Once those three knots are untangled — what the table actually tells us
+
+Two things at once. They sound similar but they are different ideas, and you need both.
+
+(a) PRACTICAL — a guessing rule for new sentences.
+
+   "For any new sentence: pass it through Gemma -> SAE -> read feat 14733's value.
+    If it's big, guess label = 0 (negative).
+    If it's small / zero, guess label = 1 (positive)."
+
+   That's a one-feature classifier. We didn't train it. We just looked at the train data and 
+   noticed which way feat 14733 lined up with the labels, then flipped that into a prediction rule.
+
+(b) SCIENTIFIC — what the existence of this pattern tells us about Gemma.
+
+   The very fact that ANY single SAE feature has |corr| = 0.5 with sentiment is a statement about 
+   Gemma's internals. It means that by the middle of the model (layer 12), Gemma has already organised 
+   its activations in such a way that positive and negative sentences end up in different geometric 
+   regions of the 2304-dim activation space — separable along an approximately linear direction.
+
+   If sentiment were buried in some tangled, non-linear way inside Gemma, no single SAE feature would 
+   correlate with it. The fact that one does is evidence that Gemma represents sentiment as a roughly 
+   linear direction.
+
+   In short: Gemma was never trained to do sentiment classification, but it has internally structured its
+    layer-12 representations in a way that makes sentiment easy to read with simple linear tools. That's 
+    the discovery.
+
+
+
+### Two outputs from one correlation number
+
+  the correlation NUMBER (-0.49)         -> a one-feature prediction rule (the tool)
+  the correlation's EXISTENCE             -> a finding about Gemma's geometry (the discovery)
+
+Both come from the same calculation. We use the number as a tool. We use the fact of the number existing
+ as a scientific finding.
+
+
+
+### Why this matters for the comparison with linear probes
+
+This is the bit I would have missed if I hadn't pinned this down.
+
+The linear probe gives us 92% test accuracy by combining all 2304 dimensions of layer 12 into one optimal 
+direction. That direction was TRAINED — we chose it specifically to separate positive from negative 
+sentences.
+
+The SAE gives us a pre-existing direction (feat 14733's decoder column) that was NOT trained on the labels 
+— it was learned by Google during the SAE pretraining stage on the entire pretraining distribution of Gemma.
+ Just one of its 16,384 features happens to align with our sentiment task at correlation 0.5, giving us 
+ roughly 70–75% accuracy when used alone.
+
+So the comparison is really:
+
+  Linear probe:    one TRAINED direction in 2304-dim space, 92% accuracy. Hard to interpret directly.
+  SAE:             one PRE-EXISTING feature, ~70–75% accuracy alone (or higher if we combine multiple features),
+                   but it has a name, a decoder column, and an interpretation we can examine.
+
+Both methods find sentiment-related structure inside Gemma. The linear probe finds the best linear separator. 
+The SAE finds an interpretable decomposition where sentiment shows up as a small set of named features. They 
+confirm the same underlying fact — Gemma has organised sentiment as a linear direction at layer 12 — but they 
+trade accuracy for interpretability in opposite ways.
+
+That's the whole comparison this project is meant to surface. None of it makes sense until the three knots 
+above are untangled.
+
+
+
+
+#### Now we will do evaluation and how we do evaluation of SAEs.
+From training, we got one number: feature 14733. We picked it because its values across the 2000 training
+sentences correlated with the labels — high on negatives,
+low on positives. We didn't pick any cutoff yet.
+
+The main job each split has in this step:
+  Train  -> find which feature  (14733)
+  Val    -> find the cutoff number
+  Test   -> use both, measure final accuracy
+
+About the cutoff:
+
+Feature 14733 is not a yes/no switch. For each sentence it produces a number — something like 0.0, 0.3, 1.4,
+3.7, etc. To classify a sentence we need a yes/no answer, so we have to draw one boundary line on this
+number axis. Above that line we predict negative, below we predict positive. That single boundary number is
+the cutoff.
+
+We don't know in advance where the line should go. If we set it too low (e.g. cutoff = 0), every sentence
+where the feature fires even a little gets called negative — but the feature might fire weakly on some
+positive sentences too, so we'd wrongly mark them. If we set it too high (e.g. cutoff = 3), only sentences
+where the feature fires very strongly get called negative — we'd correctly catch strong negatives but miss
+the weaker ones. The right cutoff is somewhere in the middle and depends on the actual distribution of
+feature values on real sentences.
+
+We pick it on val. Concretely, we try many candidate cutoff values (from very low to very high). For each
+candidate, we apply the rule to all 500 val sentences and count how many predictions match the true val
+labels. The candidate that produces the most correct answers wins. That winning number becomes our cutoff.
+
+Once chosen, the cutoff is locked. On test we don't tune it again. We just apply the locked cutoff to the
+500 test sentences, compare predictions to true test labels, and that gives us the SAE's final accuracy.
+
+================================================================================
+Small confusion questions on evaluation (Q&A)
+================================================================================
+
+Q: From training we got feature 14733. What next?
+A: We apply it to val and test sentences to see if the same pattern (high feature value -> negative,
+   low value -> positive) still works on data the feature was not picked from.
+
+Q: Feature 14733 gives a number for each sentence, not a yes/no. How do we classify?
+A: We draw a cutoff line on that number. Above the line = predict negative, below = predict positive.
+   We need one cutoff number.
+
+Q: Who picks the cutoff? Was it picked during training?
+A: No. On training we only computed correlation — one number summarising the relationship between the
+   feature column and the labels. No cutoff was picked there. The cutoff comes later, on val.
+
+Q: How is the cutoff chosen on val?
+A: We try many candidate cutoff values. For each one, we apply it to all 500 val sentences and count
+   how many predictions match the true val labels. The cutoff with the most correct answers wins.
+
+Q: Isn't picking the cutoff on val biased?
+A: No. Val exists for exactly this kind of tuning. Train is where we discover the feature, val is where
+   we tune small choices like the cutoff, test stays sealed. The linear probe did the same thing —
+   sklearn picked all 2305 weights using training labels.
+
+Q: Isn't the whole evaluation circular? We already know feature 14733 fires on negative, then on eval
+   we check if it fires on negative.
+A: No. The training correlation only tells us the pattern held on those 2000 specific sentences. Val and
+   test are 500 + 500 brand-new sentences the feature was never picked using. The pattern is only a
+   hypothesis until it survives on unseen data.
+
+Q: So on val, we don't push toward negative — we just check whether the pattern actually holds?
+A: Yes. We don't force anything. We just check: when feature 14733 fires high on a new sentence, is it
+   really negative? When it stays low, is it really positive? If both hold, the discovery generalises.
+
+Q: So the main finding on val is finding that cutoff?
+A: Yes. That's the one job val has in this step.
+
+
+================================================================================
+SAE classifier results — single feature, top-K, and the honest trade-off
+================================================================================
+
+Single-feature classifier (feature 14733 only, cutoff from val):
+  val accuracy   = 73.4%
+  test accuracy  = 74.4%
+  test f1        = 0.79
+  test auc       = 0.81
+
+Top-K SAE probes (logistic regression on top-K features ranked by |corr|):
+
+  K = 1     test acc = 77.4%
+  K = 5     test acc = 85.0%
+  K = 10    test acc = 85.4%
+  K = 20    test acc = 86.0%
+  K = 50    test acc = 87.6%
+  K = 100   test acc = 89.8%    <- best
+  K = 500   test acc = 88.2%    overfitting starts
+  K = 1000  test acc = 89.2%
+
+Linear probe (full 2304-dim residual stream):  test acc = 92.0%
+
+So on raw accuracy, SAE loses in every configuration we tested. The probe wins
+everywhere. The honest gap is:
+
+  1 SAE feature   ->  -14.6% vs probe
+  5 SAE features  ->  -7.0%
+  100 SAE features->  -2.2%
+
+But SAE was not built to win on accuracy. The probe was trained specifically
+to maximise sentiment accuracy using sentiment labels. The SAE was trained by
+Google with no labels at all, just to reconstruct Gemma's activations sparsely
+on the whole internet. The fact that we can pull 89.8% accuracy out of an
+unsupervised feature dictionary is the actual finding — not that it loses by
+2% to a supervised probe.
+
+So the real comparison is:
+
+  Linear probe:    1 direction, 92% accuracy, no human meaning for any axis.
+                   You cannot read it.
+
+  SAE:             ~5-100 features, 85-90% accuracy, but each feature can be
+                   individually inspected — list its top-firing sentences and
+                   read what concept it represents.
+
+For the FYP, the takeaway is:
+
+  - Both methods find sentiment as a linear direction at layer 12.
+  - The probe extracts it more accurately because it was trained for that.
+  - The SAE finds it WITHOUT supervision, which is the bigger discovery.
+  - The trade-off is ~2% accuracy in exchange for individual-feature
+    interpretability.
+
+Sentiment is not captured by a single SAE feature. It is spread across roughly
+5-10 core features (which give us ~85%) with another ~90 features adding small
+refinements (intensity, negation, specific vocabulary, etc.). Going past 100
+features adds noise and starts to overfit.
+
