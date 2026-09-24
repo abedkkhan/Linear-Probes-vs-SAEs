@@ -29,8 +29,9 @@ from sklearn.metrics import (accuracy_score, confusion_matrix, f1_score,
                              roc_auc_score)
 from sklearn.preprocessing import StandardScaler
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
+LP_DIR = PROJECT_ROOT / "data" / "linear_probes"
 MODELS_DIR = PROJECT_ROOT / "models"
 RESULTS_DIR = PROJECT_ROOT / "results"
 
@@ -40,8 +41,8 @@ SEED = 42
 
 
 def load_split(split: str) -> tuple[np.ndarray, np.ndarray]:
-    X = np.load(DATA_DIR / f"{split}_activations.npy")
-    y = np.load(DATA_DIR / f"{split}_labels.npy")
+    X = np.load(LP_DIR / f"{split}_activations.npy")
+    y = np.load(LP_DIR / f"{split}_labels.npy")
     return X, y
 
 

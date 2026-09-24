@@ -1,0 +1,28 @@
+{
+  "l0_per_split": {
+    "train": {
+      "mean": 77.81673097994378,
+      "tokens": 20991
+    },
+    "val": {
+      "mean": 80.91830573598024,
+      "tokens": 10931
+    },
+    "test": {
+      "mean": 78.67721632799856,
+      "tokens": 5561
+    }
+  },
+  "mean_l0": 78.84889149747886,
+  "fraction_active": 0.004812554412687919,
+  "feature_14733_test": {
+    "silent_negative": 46,
+    "n_negative": 224,
+    "silent_positive": 209,
+    "n_positive": 276,
+    "min_nonzero_activation": 3.19140625,
+    "max_activation": 22.484375,
+    "above_threshold_negative": 129,
+    "above_threshold_positive": 33
+  }
+}

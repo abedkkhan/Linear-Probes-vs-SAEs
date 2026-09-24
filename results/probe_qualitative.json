@@ -1,0 +1,128 @@
+{
+  "most_confident_correct_positive": [
+    {
+      "idx": 238,
+      "true": 1,
+      "pred": 1,
+      "logit": 25.61118790135582,
+      "p_pos": 0.9999999999924629,
+      "sentence": "an enthralling aesthetic experience"
+    },
+    {
+      "idx": 1,
+      "true": 1,
+      "pred": 1,
+      "logit": 24.213220056981868,
+      "p_pos": 0.9999999999694977,
+      "sentence": "a fascinating , compelling story"
+    },
+    {
+      "idx": 398,
+      "true": 1,
+      "pred": 1,
+      "logit": 23.616462436051982,
+      "p_pos": 0.9999999999446012,
+      "sentence": "that , with humor , warmth , and intelligence , captures a life interestingly lived"
+    },
+    {
+      "idx": 35,
+      "true": 1,
+      "pred": 1,
+      "logit": 23.214601313803907,
+      "p_pos": 0.9999999999172007,
+      "sentence": "a brilliant , absurd collection"
+    },
+    {
+      "idx": 234,
+      "true": 1,
+      "pred": 1,
+      "logit": 22.872713606730017,
+      "p_pos": 0.9999999998834515,
+      "sentence": "powerful and astonishingly vivid"
+    }
+  ],
+  "most_confident_correct_negative": [
+    {
+      "idx": 342,
+      "true": 0,
+      "pred": 0,
+      "logit": -29.248858771784107,
+      "p_pos": 1.983270871710486e-13,
+      "sentence": "pathetic junk"
+    },
+    {
+      "idx": 339,
+      "true": 0,
+      "pred": 0,
+      "logit": -27.975155083908128,
+      "p_pos": 7.088339606342905e-13,
+      "sentence": "the insipid script"
+    },
+    {
+      "idx": 3,
+      "true": 0,
+      "pred": 0,
+      "logit": -27.924754322627045,
+      "p_pos": 7.454753527446697e-13,
+      "sentence": "run out of clever ideas and visual gags about halfway through"
+    },
+    {
+      "idx": 469,
+      "true": 0,
+      "pred": 0,
+      "logit": -27.163038990752245,
+      "p_pos": 1.5967688604675448e-12,
+      "sentence": "without any redeeming value whatsoever"
+    },
+    {
+      "idx": 466,
+      "true": 0,
+      "pred": 0,
+      "logit": -25.187834555037174,
+      "p_pos": 1.1509658597124648e-11,
+      "sentence": "like being stuck in a dark pit having a nightmare about bad cinema"
+    }
+  ],
+  "worst_mistakes": [
+    {
+      "idx": 214,
+      "true": 0,
+      "pred": 1,
+      "logit": 8.081605119871782,
+      "p_pos": 0.9996909211842574,
+      "sentence": "you can taste it , but there 's no fizz"
+    },
+    {
+      "idx": 482,
+      "true": 1,
+      "pred": 0,
+      "logit": -7.606033992723124,
+      "p_pos": 0.0004971934809959551,
+      "sentence": "for cryin '"
+    },
+    {
+      "idx": 98,
+      "true": 0,
+      "pred": 1,
+      "logit": 7.596171698509617,
+      "p_pos": 0.9994978812655083,
+      "sentence": "a rude black comedy about the catalytic effect a holy fool has upon those around him in the cutthroat world of children 's television ."
+    },
+    {
+      "idx": 196,
+      "true": 0,
+      "pred": 1,
+      "logit": 7.094818963784727,
+      "p_pos": 0.999171296404127,
+      "sentence": "genial-rogue shtick"
+    },
+    {
+      "idx": 282,
+      "true": 0,
+      "pred": 1,
+      "logit": 7.030240233628944,
+      "p_pos": 0.9991160628204518,
+      "sentence": "( or role , or edit , or score , or anything , really )"
+    }
+  ]
+}

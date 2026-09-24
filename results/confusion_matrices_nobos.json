@@ -1,0 +1,47 @@
+{
+  "Linear probe": {
+    "confusion_matrix": [
+      [
+        199,
+        25
+      ],
+      [
+        14,
+        262
+      ]
+    ],
+    "accuracy": 0.922,
+    "negative_recall": 0.8883928571428571,
+    "positive_recall": 0.9492753623188406
+  },
+  "SAE top-100 classifier": {
+    "confusion_matrix": [
+      [
+        190,
+        34
+      ],
+      [
+        17,
+        259
+      ]
+    ],
+    "accuracy": 0.898,
+    "negative_recall": 0.8482142857142857,
+    "positive_recall": 0.9384057971014492
+  },
+  "SAE single feature (threshold)": {
+    "confusion_matrix": [
+      [
+        129,
+        95
+      ],
+      [
+        33,
+        243
+      ]
+    ],
+    "accuracy": 0.744,
+    "negative_recall": 0.5758928571428571,
+    "positive_recall": 0.8804347826086957
+  }
+}

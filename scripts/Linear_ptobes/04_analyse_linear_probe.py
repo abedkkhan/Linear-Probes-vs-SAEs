@@ -29,8 +29,9 @@ import seaborn as sns
 from sklearn.metrics import (accuracy_score, confusion_matrix, f1_score,
                              roc_auc_score, roc_curve)
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
+LP_DIR = PROJECT_ROOT / "data" / "linear_probes"
 MODELS_DIR = PROJECT_ROOT / "models"
 RESULTS_DIR = PROJECT_ROOT / "results"
 PLOTS_DIR = RESULTS_DIR / "plots"
@@ -39,8 +40,8 @@ sns.set_theme(style="whitegrid", context="talk")
 
 
 def load_split(split: str):
-    X = np.load(DATA_DIR / f"{split}_activations.npy")
-    y = np.load(DATA_DIR / f"{split}_labels.npy")
+    X = np.load(LP_DIR / f"{split}_activations.npy")
+    y = np.load(LP_DIR / f"{split}_labels.npy")
     rows = json.loads((DATA_DIR / f"{split}_samples.json").read_text())
     return X, y, rows
 

@@ -1,0 +1,7 @@
+{
+  "feature_id": 14733,
+  "pooling": "max",
+  "cutoff": 4.926036432160804,
+  "val_accuracy_at_cutoff": 0.734,
+  "rule": "if feature_value > cutoff -> predict negative (0), else positive (1)"
+}

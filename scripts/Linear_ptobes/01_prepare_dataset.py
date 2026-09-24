@@ -32,7 +32,7 @@ N_TRAIN = 2000
 N_VAL = 500
 N_TEST = 500
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 
 
 def main() -> None:

@@ -24,7 +24,7 @@ MODEL_ID = "google/gemma-2-2b"
 TARGET_LAYER = 12
 N_PILOT = 10
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 TRAIN_JSON = PROJECT_ROOT / "data" / "train_samples.json"
 
 

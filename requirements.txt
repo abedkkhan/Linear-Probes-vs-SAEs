@@ -1,9 +1,12 @@
-torch
-transformers
-datasets
-scikit-learn
-numpy
-python-dotenv
-matplotlib
-seaborn
-sae-lens
+# Python 3.12. Versions used to produce the results in the paper.
+torch==2.11.0
+transformers==5.7.0
+datasets==4.8.5
+sae-lens==6.43.0
+scikit-learn==1.8.0
+scipy==1.17.1
+numpy==2.4.4
+matplotlib==3.10.9
+seaborn==0.13.2
+tqdm==4.67.3
+python-dotenv==1.2.2
