@@ -1,4 +1,4 @@
-# Linear Probes vs Sparse Autoencoders for Understanding Language Models
+# Beyond Accuracy: Do Linear Probes and Sparse Autoencoders Recover the Same Representation?
 
 Code and results for a head-to-head comparison of **linear probes** and **sparse autoencoders (SAEs)** on the same model, layer, and task: binary sentiment (SST-2) in the residual stream of **Gemma 2 2B**, using the pretrained **Gemma Scope** SAEs. The two methods are compared on classification accuracy and on the geometry of the directions they identify.
 
