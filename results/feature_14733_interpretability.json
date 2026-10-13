@@ -1,0 +1,84 @@
+{
+  "feature_id": 14733,
+  "top_activating_sentences": [
+    {
+      "activation": 25.703125,
+      "label": "negative",
+      "sentence": "the movie straddles the fence between escapism and social commentary , and on both sides i"
+    },
+    {
+      "activation": 23.75,
+      "label": "negative",
+      "sentence": "to give the film the substance it so desperately needs"
+    },
+    {
+      "activation": 22.890625,
+      "label": "negative",
+      "sentence": "become apparent that the franchise 's best years are long past"
+    },
+    {
+      "activation": 21.453125,
+      "label": "negative",
+      "sentence": "the premise of `` abandon '' holds promise , ... but its delivery is a complete mess"
+    },
+    {
+      "activation": 21.125,
+      "label": "positive",
+      "sentence": "its occasional charms"
+    },
+    {
+      "activation": 20.6875,
+      "label": "negative",
+      "sentence": "laconic and very stilted in its dialogue , this indie flick never found its audience , pro"
+    },
+    {
+      "activation": 20.640625,
+      "label": "negative",
+      "sentence": "that something hip and transgressive was being attempted here that stubbornly refused to g"
+    },
+    {
+      "activation": 20.515625,
+      "label": "positive",
+      "sentence": "occasionally very enjoyable"
+    },
+    {
+      "activation": 19.984375,
+      "label": "negative",
+      "sentence": "is the kathie lee gifford of film directors , sadly proving once again ego does n't always"
+    },
+    {
+      "activation": 19.6875,
+      "label": "negative",
+      "sentence": "despite terrific special effects and funnier gags , harry potter and the chamber of secret"
+    },
+    {
+      "activation": 19.59375,
+      "label": "negative",
+      "sentence": ", steven soderbergh 's space opera emerges as a numbingly dull experience ."
+    },
+    {
+      "activation": 19.078125,
+      "label": "negative",
+      "sentence": "the transporter bombards the viewer with so many explosions and side snap kicks that it en"
+    }
+  ],
+  "selectivity": {
+    "mean_activation_negative": 6.0036396980285645,
+    "mean_activation_positive": 1.6088906526565552,
+    "selectivity_index": 0.5773046335899576
+  },
+  "negative_class_at_cutoff": {
+    "cutoff": 4.926036432160804,
+    "precision": 0.7708933717568143,
+    "recall": 0.6086461888502745,
+    "f1": 0.6802288615530949,
+    "tp": 535,
+    "fp": 159,
+    "fn": 344
+  },
+  "activation_density": {
+    "all": 0.488,
+    "negative": 0.7713310580204779,
+    "positive": 0.26583407671721676
+  }
+}

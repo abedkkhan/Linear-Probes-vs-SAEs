@@ -1,0 +1,432 @@
+{
+  "probe_test_acc": 0.922,
+  "sae100_test_acc": 0.898,
+  "single_feature_test_acc": 0.744,
+  "agreement": {
+    "both_correct": 436,
+    "probe_only": 25,
+    "sae_only": 13,
+    "both_wrong": 26,
+    "prediction_agreement": 0.924
+  },
+  "probe_errors": {
+    "false_positive": 25,
+    "false_negative": 14
+  },
+  "probe_most_confident_false_positives": [
+    {
+      "sentence": "deep , uncompromising curtsy",
+      "label": "negative",
+      "probe_p_pos": 0.999,
+      "sae100_p_pos": 0.889,
+      "feat14733": 0.0
+    },
+    {
+      "sentence": "a rude black comedy about the catalytic effect a holy fool has upon those around him in the cutthroat world of children 's television .",
+      "label": "negative",
+      "probe_p_pos": 0.999,
+      "sae100_p_pos": 0.552,
+      "feat14733": 4.88
+    },
+    {
+      "sentence": "you can taste it , but there 's no fizz",
+      "label": "negative",
+      "probe_p_pos": 0.999,
+      "sae100_p_pos": 0.051,
+      "feat14733": 3.59
+    },
+    {
+      "sentence": "genial-rogue shtick",
+      "label": "negative",
+      "probe_p_pos": 0.999,
+      "sae100_p_pos": 0.985,
+      "feat14733": 0.0
+    },
+    {
+      "sentence": "( or role , or edit , or score , or anything , really )",
+      "label": "negative",
+      "probe_p_pos": 0.998,
+      "sae100_p_pos": 0.692,
+      "feat14733": 0.0
+    },
+    {
+      "sentence": "often heartbreaking",
+      "label": "negative",
+      "probe_p_pos": 0.997,
+      "sae100_p_pos": 0.98,
+      "feat14733": 3.38
+    },
+    {
+      "sentence": "taken",
+      "label": "negative",
+      "probe_p_pos": 0.989,
+      "sae100_p_pos": 0.708,
+      "feat14733": 0.0
+    },
+    {
+      "sentence": "shanghai ghetto may not be as dramatic as roman polanski 's the pianist , but",
+      "label": "negative",
+      "probe_p_pos": 0.987,
+      "sae100_p_pos": 0.087,
+      "feat14733": 5.38
+    }
+  ],
+  "probe_most_confident_false_negatives": [
+    {
+      "sentence": "for cryin '",
+      "label": "positive",
+      "probe_p_pos": 0.0,
+      "sae100_p_pos": 0.258,
+      "feat14733": 3.41
+    },
+    {
+      "sentence": "slapstick",
+      "label": "positive",
+      "probe_p_pos": 0.002,
+      "sae100_p_pos": 0.627,
+      "feat14733": 0.0
+    },
+    {
+      "sentence": "by the shadowy lighting",
+      "label": "positive",
+      "probe_p_pos": 0.002,
+      "sae100_p_pos": 0.217,
+      "feat14733": 4.25
+    },
+    {
+      "sentence": "should give `` scratch '' a second look .",
+      "label": "positive",
+      "probe_p_pos": 0.002,
+      "sae100_p_pos": 0.594,
+      "feat14733": 0.0
+    },
+    {
+      "sentence": "is exactly how genteel and unsurprising the execution turns out to be .",
+      "label": "positive",
+      "probe_p_pos": 0.005,
+      "sae100_p_pos": 0.035,
+      "feat14733": 12.91
+    },
+    {
+      "sentence": "gushing -- imamura squirts the screen in ` warm water under a red bridge '",
+      "label": "positive",
+      "probe_p_pos": 0.015,
+      "sae100_p_pos": 0.212,
+      "feat14733": 0.0
+    },
+    {
+      "sentence": "watching the powerpuff girls movie , my mind kept returning to one anecdote for comparison : the cartoon in japan that gave people seizures .",
+      "label": "positive",
+      "probe_p_pos": 0.026,
+      "sae100_p_pos": 0.615,
+      "feat14733": 0.0
+    },
+    {
+      "sentence": "abstract approach",
+      "label": "positive",
+      "probe_p_pos": 0.056,
+      "sae100_p_pos": 0.405,
+      "feat14733": 4.45
+    }
+  ],
+  "probe_correct_sae_wrong": [
+    {
+      "sentence": "there are enough high points to keep this from being a complete waste of time",
+      "label": "positive",
+      "probe_p_pos": 1.0,
+      "sae100_p_pos": 0.004,
+      "feat14733": 14.36
+    },
+    {
+      "sentence": "it has the air of a surprisingly juvenile lark , a pop-influenced prank whose charms are immediately apparent and wear thin with repetition .",
+      "label": "negative",
+      "probe_p_pos": 0.007,
+      "sae100_p_pos": 0.97,
+      "feat14733": 18.61
+    },
+    {
+      "sentence": "one of the few ` cool ' actors who never seems aware of his own coolness",
+      "label": "positive",
+      "probe_p_pos": 1.0,
+      "sae100_p_pos": 0.042,
+      "feat14733": 18.2
+    },
+    {
+      "sentence": "if there was ever a movie where the upbeat ending feels like a copout",
+      "label": "negative",
+      "probe_p_pos": 0.001,
+      "sae100_p_pos": 0.927,
+      "feat14733": 8.15
+    },
+    {
+      "sentence": "carrying this wafer-thin movie on his nimble shoulders",
+      "label": "negative",
+      "probe_p_pos": 0.407,
+      "sae100_p_pos": 0.898,
+      "feat14733": 3.68
+    },
+    {
+      "sentence": "without sham the raw-nerved story",
+      "label": "positive",
+      "probe_p_pos": 0.99,
+      "sae100_p_pos": 0.107,
+      "feat14733": 4.15
+    },
+    {
+      "sentence": ", well-written television series where you 've missed the first half-dozen episodes and probably wo n't see the next six .",
+      "label": "negative",
+      "probe_p_pos": 0.0,
+      "sae100_p_pos": 0.837,
+      "feat14733": 7.86
+    },
+    {
+      "sentence": "some of it is honestly affecting",
+      "label": "positive",
+      "probe_p_pos": 1.0,
+      "sae100_p_pos": 0.169,
+      "feat14733": 0.0
+    }
+  ],
+  "sae_correct_probe_wrong": [
+    {
+      "sentence": "you can taste it , but there 's no fizz",
+      "label": "negative",
+      "probe_p_pos": 0.999,
+      "sae100_p_pos": 0.051,
+      "feat14733": 3.59
+    },
+    {
+      "sentence": "slapstick",
+      "label": "positive",
+      "probe_p_pos": 0.002,
+      "sae100_p_pos": 0.627,
+      "feat14733": 0.0
+    },
+    {
+      "sentence": "should give `` scratch '' a second look .",
+      "label": "positive",
+      "probe_p_pos": 0.002,
+      "sae100_p_pos": 0.594,
+      "feat14733": 0.0
+    },
+    {
+      "sentence": "shanghai ghetto may not be as dramatic as roman polanski 's the pianist , but",
+      "label": "negative",
+      "probe_p_pos": 0.987,
+      "sae100_p_pos": 0.087,
+      "feat14733": 5.38
+    },
+    {
+      "sentence": "watching the powerpuff girls movie , my mind kept returning to one anecdote for comparison : the cartoon in japan that gave people seizures .",
+      "label": "positive",
+      "probe_p_pos": 0.026,
+      "sae100_p_pos": 0.615,
+      "feat14733": 0.0
+    },
+    {
+      "sentence": "is not edward burns ' best film",
+      "label": "negative",
+      "probe_p_pos": 0.969,
+      "sae100_p_pos": 0.485,
+      "feat14733": 3.19
+    },
+    {
+      "sentence": "you come from a family that eats , meddles , argues , laughs , kibbitzes and fights together",
+      "label": "negative",
+      "probe_p_pos": 0.964,
+      "sae100_p_pos": 0.146,
+      "feat14733": 7.02
+    },
+    {
+      "sentence": "it has its faults",
+      "label": "negative",
+      "probe_p_pos": 0.884,
+      "sae100_p_pos": 0.216,
+      "feat14733": 0.0
+    }
+  ],
+  "both_wrong": [
+    {
+      "sentence": "prickly indie comedy",
+      "label": "negative",
+      "probe_p_pos": 0.52,
+      "sae100_p_pos": 0.934,
+      "feat14733": 5.29
+    },
+    {
+      "sentence": "unlike",
+      "label": "negative",
+      "probe_p_pos": 0.809,
+      "sae100_p_pos": 0.687,
+      "feat14733": 0.0
+    },
+    {
+      "sentence": "low-tech magic realism",
+      "label": "negative",
+      "probe_p_pos": 0.919,
+      "sae100_p_pos": 0.665,
+      "feat14733": 0.0
+    },
+    {
+      "sentence": "may not rival the filmmaker 's period pieces",
+      "label": "negative",
+      "probe_p_pos": 0.816,
+      "sae100_p_pos": 0.86,
+      "feat14733": 0.0
+    },
+    {
+      "sentence": "a rude black comedy about the catalytic effect a holy fool has upon those around him in the cutthroat world of children 's television .",
+      "label": "negative",
+      "probe_p_pos": 0.999,
+      "sae100_p_pos": 0.552,
+      "feat14733": 4.88
+    },
+    {
+      "sentence": "by the shadowy lighting",
+      "label": "positive",
+      "probe_p_pos": 0.002,
+      "sae100_p_pos": 0.217,
+      "feat14733": 4.25
+    },
+    {
+      "sentence": "but if the essence of magic is its make-believe promise of life that soars above the material realm , this is the opposite of a truly magical movie .",
+      "label": "negative",
+      "probe_p_pos": 0.978,
+      "sae100_p_pos": 0.848,
+      "feat14733": 5.39
+    },
+    {
+      "sentence": "abstract approach",
+      "label": "positive",
+      "probe_p_pos": 0.056,
+      "sae100_p_pos": 0.405,
+      "feat14733": 4.45
+    },
+    {
+      "sentence": "often heartbreaking",
+      "label": "negative",
+      "probe_p_pos": 0.997,
+      "sae100_p_pos": 0.98,
+      "feat14733": 3.38
+    },
+    {
+      "sentence": "instead of simply handling conventional material in a conventional way",
+      "label": "positive",
+      "probe_p_pos": 0.259,
+      "sae100_p_pos": 0.146,
+      "feat14733": 0.0
+    },
+    {
+      "sentence": "genial-rogue shtick",
+      "label": "negative",
+      "probe_p_pos": 0.999,
+      "sae100_p_pos": 0.985,
+      "feat14733": 0.0
+    },
+    {
+      "sentence": "plunging deeper",
+      "label": "positive",
+      "probe_p_pos": 0.466,
+      "sae100_p_pos": 0.402,
+      "feat14733": 0.0
+    },
+    {
+      "sentence": "( or role , or edit , or score , or anything , really )",
+      "label": "negative",
+      "probe_p_pos": 0.998,
+      "sae100_p_pos": 0.692,
+      "feat14733": 0.0
+    },
+    {
+      "sentence": "plot and pacing typical hollywood war-movie stuff",
+      "label": "negative",
+      "probe_p_pos": 0.89,
+      "sae100_p_pos": 0.584,
+      "feat14733": 4.64
+    },
+    {
+      "sentence": "deep , uncompromising curtsy",
+      "label": "negative",
+      "probe_p_pos": 0.999,
+      "sae100_p_pos": 0.889,
+      "feat14733": 0.0
+    },
+    {
+      "sentence": "this sade is hardly a perverse , dangerous libertine and agitator -- which would have made for better drama .",
+      "label": "negative",
+      "probe_p_pos": 0.924,
+      "sae100_p_pos": 0.65,
+      "feat14733": 5.53
+    },
+    {
+      "sentence": "walks a tricky tightrope between being wickedly funny and just plain wicked",
+      "label": "negative",
+      "probe_p_pos": 0.819,
+      "sae100_p_pos": 0.889,
+      "feat14733": 7.14
+    },
+    {
+      "sentence": "is exactly how genteel and unsurprising the execution turns out to be .",
+      "label": "positive",
+      "probe_p_pos": 0.005,
+      "sae100_p_pos": 0.035,
+      "feat14733": 12.91
+    },
+    {
+      "sentence": "one of those ` alternate reality '",
+      "label": "negative",
+      "probe_p_pos": 0.987,
+      "sae100_p_pos": 0.625,
+      "feat14733": 0.0
+    },
+    {
+      "sentence": "pokes , provokes ,",
+      "label": "positive",
+      "probe_p_pos": 0.367,
+      "sae100_p_pos": 0.466,
+      "feat14733": 0.0
+    },
+    {
+      "sentence": "have returned from the beyond to warn you",
+      "label": "negative",
+      "probe_p_pos": 0.85,
+      "sae100_p_pos": 0.61,
+      "feat14733": 3.54
+    },
+    {
+      "sentence": "so-five-minutes-ago pop music",
+      "label": "negative",
+      "probe_p_pos": 0.609,
+      "sae100_p_pos": 0.699,
+      "feat14733": 0.0
+    },
+    {
+      "sentence": "gushing -- imamura squirts the screen in ` warm water under a red bridge '",
+      "label": "positive",
+      "probe_p_pos": 0.015,
+      "sae100_p_pos": 0.212,
+      "feat14733": 0.0
+    },
+    {
+      "sentence": "for cryin '",
+      "label": "positive",
+      "probe_p_pos": 0.0,
+      "sae100_p_pos": 0.258,
+      "feat14733": 3.41
+    },
+    {
+      "sentence": "taken",
+      "label": "negative",
+      "probe_p_pos": 0.989,
+      "sae100_p_pos": 0.708,
+      "feat14733": 0.0
+    },
+    {
+      "sentence": "a great premise but only a great premise",
+      "label": "negative",
+      "probe_p_pos": 0.546,
+      "sae100_p_pos": 0.994,
+      "feat14733": 7.14
+    }
+  ]
+}

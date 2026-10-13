@@ -1,0 +1,27 @@
+{
+  "top100": {
+    "acc": 0.898,
+    "probe_only": 25,
+    "other_only": 13,
+    "mcnemar_exact_p": 0.07295138851623051
+  },
+  "top5": {
+    "acc": 0.85,
+    "probe_only": 51,
+    "other_only": 15,
+    "mcnemar_exact_p": 1.0096127351113507e-05
+  },
+  "top50": {
+    "acc": 0.876,
+    "probe_only": 34,
+    "other_only": 11,
+    "mcnemar_exact_p": 0.0008240823595997425
+  },
+  "single_thr": {
+    "acc": 0.744,
+    "probe_only": 108,
+    "other_only": 19,
+    "mcnemar_exact_p": 2.654707540430441e-16
+  },
+  "probe_ci95_halfwidth": 0.02350627599599732
+}

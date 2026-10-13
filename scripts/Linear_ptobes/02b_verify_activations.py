@@ -17,8 +17,9 @@ from pathlib import Path
 
 import numpy as np
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
+LP_DIR = PROJECT_ROOT / "data" / "linear_probes"
 SPLITS = ("train", "val", "test")
 EXPECTED_N = {"train": 2000, "val": 500, "test": 500}
 HIDDEN = 2304
@@ -30,8 +31,8 @@ def main() -> None:
     summaries = {}
 
     for split in SPLITS:
-        act_path = DATA_DIR / f"{split}_activations.npy"
-        lbl_path = DATA_DIR / f"{split}_labels.npy"
+        act_path = LP_DIR / f"{split}_activations.npy"
+        lbl_path = LP_DIR / f"{split}_labels.npy"
         json_path = DATA_DIR / f"{split}_samples.json"
 
         acts = np.load(act_path)
