@@ -37,6 +37,7 @@ run $SAE/19_plot_topk_vs_probe_nobos.py
 run $SAE/21_significance_tests.py
 run $SAE/22_confusion_matrices.py
 run $SAE/23_sae_sparsity_and_feature_stats.py
+run $SAE/24_overlap_robustness.py         # train/test phrase overlap check (Limitations)
 
 # 6. SAE layer sweep (Appendix E); resumable, about 30 min on Apple silicon
 run $SAE/20_sae_layer_sweep.py

@@ -10,10 +10,10 @@ Code and results for a head-to-head comparison of **linear probes** and **sparse
 | SAE, top-100 features | 0.898 | 0.910 | 0.958 |
 | SAE, single feature (#14,733) | 0.744 | 0.792 | 0.808 |
 
-- The probe vs top-100 SAE gap is **not significant** (exact McNemar, p = 0.07).
+- The probe is **more accurate than every SAE classifier** at layer 12. K = 100 is the best value on the test set, and for it the gap is not significant (exact McNemar, p = 0.07); for K selected on the validation set (K = 50, 87.6%) it is (p < 0.001).
 - The top SAE feature is the **most aligned of all 16,384 features** with the probe direction (|cos| = 0.23, z = 11.0), and the sign of alignment matches feature polarity for all top-20 features.
-- The alignment is **partial**: the top 100 SAE decoders span 44% of the probe direction.
-- Across all 26 layers the directional agreement holds, while the accuracy ranking depends on depth.
+- The alignment is **partial**: the top 100 SAE decoder vectors span 44% of the probe direction.
+- The directional agreement holds at **25 of the 26 layers**, while the accuracy ranking depends on depth.
 
 All numbers and figures are in [`results/`](results/) and [`results/plots/`](results/plots/).
 
@@ -49,9 +49,10 @@ All randomness uses seed 42. Results should match `results/` exactly on the same
 | Feature 14,733 selectivity and examples (Sec. 4.1.4, 4.2) | `SAEs/13`, `SAEs/17`, `SAEs/23` | `feature_14733_interpretability.json`, `sae_sparsity_feature_stats.json` |
 | Probe vs SAE errors (Sec. 4.2) | `Linear_ptobes/07_qualitative_nobos.py` | `qualitative_nobos.json` |
 | Significance tests | `SAEs/21_significance_tests.py` | `significance_tests_nobos.json` |
+| Phrase-overlap robustness check (Limitations) | `SAEs/24_overlap_robustness.py` | `overlap_robustness.json` |
 | Confusion matrices (App. C) | `SAEs/22_confusion_matrices.py` | `confusion_matrices_nobos.json` |
 | Effect of corrections (App. D) | `Linear_ptobes/03`, `SAEs/12`, `16`, `18` | `direction_stats.json`, `direction_stats_raw.json` |
-| SAE layer sweep (App. E) | `SAEs/20_sae_layer_sweep.py` | `sae_layer_sweep_summary.json` |
+| Comparison at every layer (App. E) | `SAEs/20_sae_layer_sweep.py` | `sae_layer_sweep_summary.json` |
 
 Two details matter for a fair comparison: the beginning-of-sequence token is excluded for both methods, and the probe direction is mapped back from standardised to raw activation space (`w = coef / scale`) before it is compared with SAE decoder vectors.
 
