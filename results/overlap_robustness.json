@@ -1,0 +1,28 @@
+{
+  "min_shared_words": 5,
+  "test_sentences_sharing_phrase_with_train": 60,
+  "accuracy_all": {
+    "n": 500,
+    "probe": 0.922,
+    "sae_top100": 0.898,
+    "sae_single": 0.744
+  },
+  "accuracy_without_overlap": {
+    "n": 440,
+    "probe": 0.9204545454545454,
+    "sae_top100": 0.8909090909090909,
+    "sae_single": 0.7431818181818182
+  },
+  "accuracy_overlap_only": {
+    "n": 60,
+    "probe": 0.9333333333333333,
+    "sae_top100": 0.95,
+    "sae_single": 0.75
+  },
+  "disagreements": {
+    "probe_only_correct": 25,
+    "probe_only_correct_three_words_or_fewer": 9,
+    "sae_only_correct": 13,
+    "sae_only_correct_three_words_or_fewer": 1
+  }
+}

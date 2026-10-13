@@ -49,6 +49,7 @@ All randomness uses seed 42. Results should match `results/` exactly on the same
 | Feature 14,733 selectivity and examples (Sec. 4.1.4, 4.2) | `SAEs/13`, `SAEs/17`, `SAEs/23` | `feature_14733_interpretability.json`, `sae_sparsity_feature_stats.json` |
 | Probe vs SAE errors (Sec. 4.2) | `Linear_ptobes/07_qualitative_nobos.py` | `qualitative_nobos.json` |
 | Significance tests | `SAEs/21_significance_tests.py` | `significance_tests_nobos.json` |
+| Phrase-overlap robustness check (Limitations) | `SAEs/24_overlap_robustness.py` | `overlap_robustness.json` |
 | Confusion matrices (App. C) | `SAEs/22_confusion_matrices.py` | `confusion_matrices_nobos.json` |
 | Effect of corrections (App. D) | `Linear_ptobes/03`, `SAEs/12`, `16`, `18` | `direction_stats.json`, `direction_stats_raw.json` |
 | SAE layer sweep (App. E) | `SAEs/20_sae_layer_sweep.py` | `sae_layer_sweep_summary.json` |
