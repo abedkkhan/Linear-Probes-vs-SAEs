@@ -4,7 +4,7 @@ using the canonical Gemma Scope 16k SAE for each layer.
 
 Phase 1  one forward pass per sentence, all 26 layers captured, BOS dropped,
          token activations written to disk as fp16 (data/SAEs/layer_sweep/).
-Phase 2  per layer (resumable): encode tokens with that layer's SAE, max-pool
+Phase 2  per layer: encode tokens with that layer's SAE, max-pool
          per sentence, rank features by |Pearson r| on train, then
            - single-feature threshold classifier (threshold chosen on val)
            - top-K logistic regression, K in {1,5,10,20,50,100}
@@ -16,15 +16,18 @@ Phase 2  per layer (resumable): encode tokens with that layer's SAE, max-pool
 Phase 3  aggregate + plots (results/sae_layer_sweep_summary.json,
          results/plots/sae_layer_sweep_*.png)
 
-Existing results are not modified. Layer 12 must reproduce the main results
+Every layer is recomputed by default, overwriting results/sae_layer_sweep/. If a run
+is interrupted, pass --resume to skip layers whose results already exist.
+Layer 12 must reproduce the main results
 (top feature 14733, threshold acc 0.744, top-100 acc 0.898, cos -0.229).
 
 Run from project root:
-    python scripts/SAEs/20_sae_layer_sweep.py
+    python scripts/SAEs/20_sae_layer_sweep.py [--resume]
 """
 
 import json
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -175,9 +178,11 @@ def single_feature_classifier(fv_val, y_val, fv_test, y_test, corr):
             "test_auc": float(roc_auc_score(y_test, score))}
 
 
+RESUME = "--resume" in sys.argv   # skip layers whose results already exist
+
 def analyse_layer(L, device, meta, offsets, labels, randv):
     out_path = OUT / f"layer_{L}.json"
-    if out_path.exists():
+    if RESUME and out_path.exists():
         return json.loads(out_path.read_text())
     t0 = time.time()
     n_tr, n_va = meta["split_sizes"]["train"], meta["split_sizes"]["val"]

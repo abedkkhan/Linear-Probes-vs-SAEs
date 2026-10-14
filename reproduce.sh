@@ -39,7 +39,9 @@ run $SAE/22_confusion_matrices.py
 run $SAE/23_sae_sparsity_and_feature_stats.py
 run $SAE/24_overlap_robustness.py         # train/test phrase overlap check (Limitations)
 
-# 6. SAE layer sweep (Appendix E); resumable, about 30 min on Apple silicon
+# 6. Comparison at every layer (Appendix E); about 30 min on Apple silicon.
+#    Recomputes all 26 layers. If interrupted, continue with:
+#    python scripts/SAEs/20_sae_layer_sweep.py --resume
 run $SAE/20_sae_layer_sweep.py
 
 echo -e "\nDone. Results in results/, figures in results/plots/."
