@@ -19,7 +19,7 @@ All numbers and figures are in [`results/`](results/) and [`results/plots/`](res
 
 ## Setup
 
-Requires Python 3.12 and about 10 GB of free memory (Apple-silicon MPS, CUDA, or CPU).
+Requires Python 3.12, about 10 GB of free memory (Apple-silicon MPS, CUDA, or CPU) and about 25 GB of free disk: 17 GB for the model and SAE downloads, cached by Hugging Face on the first run, and 7 GB for intermediate files.
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
@@ -35,24 +35,26 @@ Gemma 2 is a gated model: accept its licence at <https://huggingface.co/google/g
 ./reproduce.sh
 ```
 
-This runs the full pipeline in order and regenerates everything in `results/`. Runtime is about 1 hour on an Apple M-series machine, most of it model forward passes and the layer sweep. Large intermediates (activations, SAE features, trained probes) are written to `data/` and `models/`, which are not tracked.
+This runs the full pipeline in order and regenerates every number, table and figure in the paper. Once the model and SAEs are downloaded, it takes about 25 minutes on an Apple M-series machine, most of it model forward passes. Large intermediates (activations, SAE features, trained probes) are written to `data/` and `models/`, which are not tracked. The comparison at every layer (Appendix E) recomputes all 26 layers; if it is interrupted, continue it with `python scripts/SAEs/20_sae_layer_sweep.py --resume`.
 
-All randomness uses seed 42. Results should match `results/` exactly on the same hardware; small numerical differences can occur across devices.
+All randomness uses seed 42. A from-scratch run of `reproduce.sh` in a fresh clone of this repository (Apple M-series, MPS) reproduced every committed result: the data split is byte-identical, every figure is identical, and all numeric values match, apart from differences of about 1e-16 from floating-point rounding. Small numerical differences can occur on other devices.
 
 ## Where each result comes from
 
 | Paper | Script(s) | Output |
 |---|---|---|
-| Data split (Sec. 3.2) | `Linear_ptobes/01_prepare_dataset.py` | `data/*_samples.json` |
-| Probe, layer sweep, direction statistics (Sec. 4.1) | `Linear_ptobes/06_probe_pipeline_nobos.py` | `probe_metrics_nobos.json`, `layer_sweep_metrics_nobos.json`, `direction_stats_nobos.json` |
-| SAE classifiers (Table 1, Fig. top-K) | `SAEs/05`–`11`, `SAEs/19` | `sae_classifier_metrics.json`, `sae_topk_metrics.json` |
-| Feature 14,733 selectivity and examples (Sec. 4.1.4, 4.2) | `SAEs/13`, `SAEs/17`, `SAEs/23` | `feature_14733_interpretability.json`, `sae_sparsity_feature_stats.json` |
-| Probe vs SAE errors (Sec. 4.2) | `Linear_ptobes/07_qualitative_nobos.py` | `qualitative_nobos.json` |
-| Significance tests | `SAEs/21_significance_tests.py` | `significance_tests_nobos.json` |
-| Phrase-overlap robustness check (Limitations) | `SAEs/24_overlap_robustness.py` | `overlap_robustness.json` |
+| Data split (Sec. 2.2) | `Linear_ptobes/01_prepare_dataset.py` | `data/*_samples.json` |
+| Linear probe, layer sensitivity, direction statistics (Sec. 3.1) | `Linear_ptobes/06_probe_pipeline_nobos.py` | `probe_metrics_nobos.json`, `layer_sweep_metrics_nobos.json`, `direction_stats_nobos.json` |
+| SAE classifiers (Sec. 3.1.1, Table 1) | `SAEs/05`–`11`, `SAEs/19` | `sae_classifier_metrics.json`, `sae_topk_metrics.json` |
+| Feature 14,733 selectivity and examples (Sec. 3.1.4, 3.2) | `SAEs/13`, `SAEs/17`, `SAEs/23` | `feature_14733_interpretability.json`, `sae_sparsity_feature_stats.json` |
+| Probe vs SAE errors (Sec. 3.2) | `Linear_ptobes/07_qualitative_nobos.py` | `qualitative_nobos.json` |
+| Significance tests (Sec. 3.1.1) | `SAEs/21_significance_tests.py` | `significance_tests_nobos.json` |
+| Phrase-overlap robustness check (Sec. 4.3) | `SAEs/24_overlap_robustness.py` | `overlap_robustness.json` |
 | Confusion matrices (App. C) | `SAEs/22_confusion_matrices.py` | `confusion_matrices_nobos.json` |
 | Effect of corrections (App. D) | `Linear_ptobes/03`, `SAEs/12`, `16`, `18` | `direction_stats.json`, `direction_stats_raw.json` |
 | Comparison at every layer (App. E) | `SAEs/20_sae_layer_sweep.py` | `sae_layer_sweep_summary.json` |
+
+The figures in the paper are in `results/plots/`: the files ending in `_nobos`, `feature_14733_*.png` and `sae_layer_sweep_*.png`.
 
 Two details matter for a fair comparison: the beginning-of-sequence token is excluded for both methods, and the probe direction is mapped back from standardised to raw activation space (`w = coef / scale`) before it is compared with SAE decoder vectors.
 
@@ -65,7 +67,7 @@ results/                 metrics (JSON) and figures reproduced by reproduce.sh
 reproduce.sh             runs the full pipeline in order
 ```
 
-Not required for the paper (sanity checks or superseded analyses): `Linear_ptobes/00`, `02a`, `02b`, `04`, `05` and `SAEs/05a`, `05b`, `14`, `15`.
+Not required for the paper (sanity checks or superseded analyses): `Linear_ptobes/00`, `02a`, `02b`, `04`, `05` and `SAEs/05a`, `05b`, `14`, `15`. Some of their outputs are kept in `results/` for reference and are not regenerated by `reproduce.sh`, for example `layer_sweep_metrics.json`, `probe_qualitative.json` and `top_weight_dimensions.json`, which come from an earlier analysis that included the beginning-of-sequence token.
 
 ## Authors
 
